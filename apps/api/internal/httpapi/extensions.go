@@ -1,0 +1,199 @@
+package httpapi
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+type websiteInput struct {
+	Headline    string   `json:"headline"`
+	Description string   `json:"description"`
+	Services    []string `json:"services"`
+	Phone       string   `json:"phone"`
+	Address     string   `json:"address"`
+	Published   bool     `json:"published"`
+}
+type bookingInput struct {
+	BranchID     string `json:"branchId"`
+	CustomerName string `json:"customerName"`
+	Phone        string `json:"phone"`
+	Service      string `json:"service"`
+	StartsAt     string `json:"startsAt"`
+	Comment      string `json:"comment"`
+}
+type bookingStatusInput struct {
+	Status string `json:"status"`
+}
+type apiKeyInput struct {
+	Name      string `json:"name"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+func (a *api) getWebsite(w http.ResponseWriter, r *http.Request) {
+	var in websiteInput
+	var contacts map[string]any
+	err := a.db.QueryRow(r.Context(), `SELECT headline,description,services,contacts,published FROM website_settings WHERE company_id=$1`, companyID(r)).Scan(&in.Headline, &in.Description, &in.Services, &contacts, &in.Published)
+	if err != nil {
+		write(w, 200, envelope{Success: true, Data: in})
+		return
+	}
+	in.Phone, _ = contacts["phone"].(string)
+	in.Address, _ = contacts["address"].(string)
+	write(w, 200, envelope{Success: true, Data: in})
+}
+func (a *api) updateWebsite(w http.ResponseWriter, r *http.Request) {
+	var in websiteInput
+	if !decode(w, r, &in) {
+		return
+	}
+	if strings.TrimSpace(in.Headline) == "" {
+		fail(w, 422, "VALIDATION_ERROR", "Укажите заголовок сайта")
+		return
+	}
+	contacts := map[string]string{"phone": in.Phone, "address": in.Address}
+	_, err := a.db.Exec(r.Context(), `INSERT INTO website_settings(company_id,headline,description,services,contacts,published) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(company_id) DO UPDATE SET headline=excluded.headline,description=excluded.description,services=excluded.services,contacts=excluded.contacts,published=excluded.published,updated_at=now()`, companyID(r), in.Headline, in.Description, in.Services, contacts, in.Published)
+	if err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось сохранить сайт")
+		return
+	}
+	write(w, 200, envelope{Success: true, Data: in})
+}
+func (a *api) publicWebsite(w http.ResponseWriter, r *http.Request) {
+	var companyID, name, headline, description string
+	var services []string
+	var contacts map[string]any
+	err := a.db.QueryRow(r.Context(), `SELECT c.id,c.name,w.headline,w.description,w.services,w.contacts FROM companies c JOIN website_settings w ON w.company_id=c.id WHERE c.slug=$1 AND c.status='active' AND w.published`, r.PathValue("slug")).Scan(&companyID, &name, &headline, &description, &services, &contacts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		fail(w, 404, "SITE_NOT_FOUND", "Сайт не опубликован")
+		return
+	}
+	rows, _ := a.db.Query(r.Context(), `SELECT id,name,address FROM branches WHERE company_id=$1 AND is_active AND deleted_at IS NULL ORDER BY name`, companyID)
+	branches := []map[string]string{}
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, n, address string
+			if rows.Scan(&id, &n, &address) == nil {
+				branches = append(branches, map[string]string{"id": id, "name": n, "address": address})
+			}
+		}
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]any{"company": name, "headline": headline, "description": description, "services": services, "contacts": contacts, "branches": branches}})
+}
+func (a *api) publicCreateBooking(w http.ResponseWriter, r *http.Request) {
+	var in bookingInput
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.BranchID == "" || in.CustomerName == "" || len(in.Phone) < 7 || in.Service == "" || in.StartsAt == "" {
+		fail(w, 422, "VALIDATION_ERROR", "Заполните данные записи")
+		return
+	}
+	starts, err := time.Parse(time.RFC3339, in.StartsAt)
+	if err != nil || starts.Before(time.Now()) {
+		fail(w, 422, "VALIDATION_ERROR", "Выберите будущую дату и время")
+		return
+	}
+	var id string
+	err = a.db.QueryRow(r.Context(), `INSERT INTO bookings(company_id,branch_id,customer_name,phone,service,starts_at,comment) SELECT c.id,b.id,$3,$4,$5,$6,$7 FROM companies c JOIN branches b ON b.company_id=c.id WHERE c.slug=$1 AND b.id=$2 AND c.status='active' AND b.is_active RETURNING id`, r.PathValue("slug"), in.BranchID, in.CustomerName, in.Phone, in.Service, starts, in.Comment).Scan(&id)
+	if err != nil {
+		fail(w, 404, "BRANCH_NOT_FOUND", "Компания или филиал не найдены")
+		return
+	}
+	write(w, 201, envelope{Success: true, Data: map[string]string{"id": id, "status": "new"}})
+}
+func (a *api) listBookings(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.db.Query(r.Context(), `SELECT bk.id,bk.customer_name,bk.phone,bk.service,bk.starts_at,bk.status,coalesce(bk.comment,''),b.name FROM bookings bk JOIN branches b ON b.id=bk.branch_id WHERE bk.company_id=$1 ORDER BY bk.starts_at DESC LIMIT 200`, companyID(r))
+	if err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить записи")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var id, name, phone, service, status, comment, branch string
+		var starts time.Time
+		if rows.Scan(&id, &name, &phone, &service, &starts, &status, &comment, &branch) == nil {
+			items = append(items, map[string]any{"id": id, "customerName": name, "phone": phone, "service": service, "startsAt": starts, "status": status, "comment": comment, "branch": branch})
+		}
+	}
+	write(w, 200, envelope{Success: true, Data: items})
+}
+func (a *api) updateBooking(w http.ResponseWriter, r *http.Request) {
+	var in bookingStatusInput
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Status != "new" && in.Status != "confirmed" && in.Status != "completed" && in.Status != "cancelled" {
+		fail(w, 422, "VALIDATION_ERROR", "Некорректный статус записи")
+		return
+	}
+	tag, err := a.db.Exec(r.Context(), `UPDATE bookings SET status=$3,updated_at=now() WHERE company_id=$1 AND id=$2`, companyID(r), r.PathValue("id"), in.Status)
+	if err != nil || tag.RowsAffected() == 0 {
+		fail(w, 404, "BOOKING_NOT_FOUND", "Запись не найдена")
+		return
+	}
+	write(w, 200, envelope{Success: true, Data: in})
+}
+func (a *api) listAPIKeys(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.db.Query(r.Context(), `SELECT id,name,prefix,last_used_at,expires_at,revoked_at,created_at FROM api_keys WHERE company_id=$1 ORDER BY created_at DESC`, companyID(r))
+	if err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить API-ключи")
+		return
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var id, name, prefix string
+		var last, expires, revoked *time.Time
+		var created time.Time
+		if rows.Scan(&id, &name, &prefix, &last, &expires, &revoked, &created) == nil {
+			items = append(items, map[string]any{"id": id, "name": name, "prefix": prefix, "lastUsedAt": last, "expiresAt": expires, "revokedAt": revoked, "createdAt": created, "active": revoked == nil && (expires == nil || expires.After(time.Now()))})
+		}
+	}
+	write(w, 200, envelope{Success: true, Data: items})
+}
+func (a *api) createAPIKey(w http.ResponseWriter, r *http.Request) {
+	var in apiKeyInput
+	if !decode(w, r, &in) {
+		return
+	}
+	if strings.TrimSpace(in.Name) == "" {
+		fail(w, 422, "VALIDATION_ERROR", "Укажите название ключа")
+		return
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		fail(w, 500, "KEY_ERROR", "Не удалось создать ключ")
+		return
+	}
+	secret := "tpx_" + base64.RawURLEncoding.EncodeToString(buf)
+	sum := sha256.Sum256([]byte(secret))
+	var expires any
+	if in.ExpiresAt != "" {
+		expires = in.ExpiresAt
+	}
+	var id string
+	err := a.db.QueryRow(r.Context(), `INSERT INTO api_keys(company_id,name,prefix,secret_hash,expires_at) VALUES($1,$2,$3,$4,$5) RETURNING id`, companyID(r), strings.TrimSpace(in.Name), secret[:12], hex.EncodeToString(sum[:]), expires).Scan(&id)
+	if err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось сохранить ключ")
+		return
+	}
+	write(w, 201, envelope{Success: true, Data: map[string]string{"id": id, "key": secret, "warning": "Скопируйте ключ сейчас — повторно он не показывается"}})
+}
+func (a *api) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	tag, err := a.db.Exec(r.Context(), `UPDATE api_keys SET revoked_at=now() WHERE company_id=$1 AND id=$2 AND revoked_at IS NULL`, companyID(r), r.PathValue("id"))
+	if err != nil || tag.RowsAffected() == 0 {
+		fail(w, 404, "API_KEY_NOT_FOUND", "Ключ не найден")
+		return
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]bool{"revoked": true}})
+}

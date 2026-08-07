@@ -1,0 +1,14 @@
+.login-text-action {
+  min-height: 44px;
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: #5540c7;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-text-action:focus-visible {
+  outline: 3px solid #c9c0ff;
+  outline-offset: 2px;
+}

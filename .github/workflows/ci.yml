@@ -1,0 +1,78 @@
+name: Tappix CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tappix-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: apps/api/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test API
+        working-directory: apps/api
+        run: go test ./...
+
+      - name: Check API formatting
+        working-directory: apps/api
+        run: test -z "$(gofmt -l .)"
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start the stack
+        run: docker compose up -d --build
+
+      - name: Apply database migrations
+        run: npm run db:migrate
+
+      - name: Wait for API
+        run: |
+          for attempt in $(seq 1 30); do
+            curl -fsS http://localhost:8080/health && exit 0
+            sleep 2
+          done
+          docker compose logs api
+          exit 1
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v

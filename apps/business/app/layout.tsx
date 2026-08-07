@@ -1,0 +1,42 @@
+import type { Metadata } from "next";
+import "./globals.css";
+import "./modal.css";
+import "./management.css";
+import "./operations.css";
+import "./portals.css";
+import "./insights.css";
+import "./login.css";
+import "./login-actions.css";
+import "./sessions.css";
+import "./customer-detail.css";
+import "./notifications.css";
+import "./admin-billing.css";
+import "./extensions.css";
+import "./files.css";
+import "./ui-actions.css";
+import "./rewards.css";
+import "./loyalty-automation.css";
+import "./reward-builder.css";
+import "./nfc-manager.css";
+import "./campaigns.css";
+import "./product-shell.css";
+import "./dashboard-v2.css";
+import "./platform-v2.css";
+import "./mvp-settings.css";
+import "./guest-portal.css";
+import "./guest-otp.css";
+import "./premium-wallet.css";
+import "./reference-theme.css";
+import "./guest-isolation.css";
+import "./founder-upgrades.css";
+import "./scanner.css";
+import "./program-mechanics.css";
+import "./product-simplified.css";
+import "./simplified-overrides.css";
+import "./provisioning-wizard.css";
+
+export const metadata: Metadata = { title: "Tappix — бизнес-панель", description: "Управление клиентами и программой лояльности" };
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="ru"><body>{children}</body></html>;
+}

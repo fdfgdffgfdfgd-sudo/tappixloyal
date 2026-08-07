@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS reward_transactions,customer_reward_progress,reward_rules,reward_definitions CASCADE;

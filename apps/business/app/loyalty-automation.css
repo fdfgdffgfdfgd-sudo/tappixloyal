@@ -1,0 +1,118 @@
+.loyalty-automation-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+.automation-card,
+.inactive-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+}
+.automation-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+}
+.automation-card > span,
+.inactive-title > span {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #fff3db;
+  color: #805b00;
+  display: grid;
+  place-items: center;
+}
+.automation-card svg,
+.inactive-title svg {
+  width: 20px;
+}
+.automation-card h2,
+.inactive-card h2 {
+  font-size: 17px;
+  margin: 1px 0 5px;
+}
+.automation-card p,
+.inactive-card p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+.automation-card > button {
+  grid-column: 1/-1;
+  min-height: 44px;
+  border: 1px solid #e4d19e;
+  border-radius: 10px;
+  background: #fffaf0;
+  color: #6d4b00;
+  font-weight: 800;
+}
+.automation-card > button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.inactive-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.inactive-title > div {
+  flex: 1;
+}
+.inactive-title select {
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0 10px;
+}
+.inactive-card > strong {
+  display: block;
+  font-size: 34px;
+  margin-top: 20px;
+}
+.inactive-card > small {
+  color: var(--muted);
+}
+.inactive-preview {
+  display: grid;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.inactive-preview > a {
+  display: grid;
+  gap: 3px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--text);
+}
+.inactive-preview > a small {
+  color: var(--muted);
+}
+.inactive-more {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: #6952e8;
+  font-weight: 700;
+  font-size: 13px;
+}
+@media (max-width: 850px) {
+  .loyalty-automation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .inactive-title {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .inactive-title select {
+    width: 100%;
+  }
+}

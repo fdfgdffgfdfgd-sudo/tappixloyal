@@ -1,0 +1,141 @@
+openapi: 3.1.0
+info:
+  title: Tappix Loyalty Platform API
+  version: 1.0.0
+  description: Multi-tenant REST API for Tappix business, customer and super-admin applications.
+servers:
+  - url: http://localhost:8080/api/v1
+security: [{bearerAuth: []}]
+paths:
+  /auth/login:
+    post:
+      security: []
+      summary: Business or super-admin login
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoginInput'}}}}
+      responses: {'200': {$ref: '#/components/responses/Success'}, '401': {$ref: '#/components/responses/Error'}}
+  /auth/refresh:
+    post:
+      security: []
+      summary: Rotate refresh token
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+  /auth/logout:
+    post: {security: [], summary: Revoke refresh token, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /auth/forgot-password:
+    post: {security: [], summary: Request a one-time password reset link, responses: {'200': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}}
+  /auth/reset-password:
+    post: {security: [], summary: Set a new password using a reset token, responses: {'200': {$ref: '#/components/responses/Success'}, '410': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}}
+  /auth/sessions:
+    get: {summary: List active refresh sessions for the current user, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /auth/sessions/{id}:
+    delete: {summary: Revoke one active refresh session, parameters: [{name: id, in: path, required: true, schema: {type: string}}], responses: {'200': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}}}
+  /dashboard:
+    get: {summary: Company dashboard, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /customers:
+    get:
+      summary: List tenant customers
+      parameters:
+        - {name: search, in: query, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+    post:
+      summary: Create customer
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CustomerInput'}}}}
+      responses: {'201': {$ref: '#/components/responses/Success'}, '409': {$ref: '#/components/responses/Error'}}
+  /customers/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get: {summary: Customer profile, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    patch: {summary: Update customer, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    delete: {summary: Archive customer, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /customers/{id}/history:
+    get: {summary: Customer visits and bonuses, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /customers/{id}/bonus:
+    post: {summary: Credit or debit points, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'201': {$ref: '#/components/responses/Success'}, '409': {$ref: '#/components/responses/Error'}}}
+  /visits:
+    get: {summary: List visits, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    post: {summary: Create visit and issue loyalty points atomically, responses: {'201': {$ref: '#/components/responses/Success'}}}
+  /branches:
+    get: {summary: List branches, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    post: {summary: Create branch, responses: {'201': {$ref: '#/components/responses/Success'}}}
+  /employees:
+    get: {summary: List employees, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    post: {summary: Create employee, responses: {'201': {$ref: '#/components/responses/Success'}}}
+  /devices:
+    get: {summary: List NFC and QR devices, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    post: {summary: Create device, responses: {'201': {$ref: '#/components/responses/Success'}}}
+  /loyalty/rules:
+    get: {summary: Get rule engine settings, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    patch: {summary: Replace loyalty rules, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /modules:
+    get: {summary: List tenant modules, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /subscription:
+    get: {summary: Current subscription, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /analytics:
+    get: {summary: Tenant analytics, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /audit:
+    get: {summary: Audit trail, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /notifications/send:
+    post: {summary: Send email notification, responses: {'201': {$ref: '#/components/responses/Success'}}}
+  /campaigns:
+    get:
+      summary: List email campaigns for the tenant
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+    post:
+      summary: Create an email campaign draft
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CampaignInput'}}}}
+      responses: {'201': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /campaigns/{id}/preview:
+    get:
+      summary: Preview the current campaign audience
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}}
+  /campaigns/{id}/send:
+    post:
+      summary: Send a draft campaign to its current audience
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}
+  /customer/register:
+    post: {security: [], summary: Register through NFC or QR token, responses: {'201': {$ref: '#/components/responses/Success'}}}
+  /customer/login:
+    post: {security: [], summary: Customer PIN login, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /customer/me:
+    get: {summary: Customer cabinet profile, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /admin/dashboard:
+    get: {summary: Platform dashboard, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /admin/companies:
+    get: {summary: List all companies, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    post: {summary: Provision company and owner, responses: {'201': {$ref: '#/components/responses/Success'}}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+  schemas:
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties: {email: {type: string, format: email}, password: {type: string, format: password}}
+    CustomerInput:
+      type: object
+      required: [firstName, phone]
+      properties: {firstName: {type: string}, lastName: {type: string}, phone: {type: string}, email: {type: string, format: email}, birthday: {type: string, format: date}}
+    CampaignInput:
+      type: object
+      required: [name, subject, body, segment]
+      properties:
+        name: {type: string}
+        subject: {type: string}
+        body: {type: string, description: 'Supports the {{name}} personalization token'}
+        segment: {type: string, enum: [all, inactive, birthday, level]}
+        inactiveDays: {type: integer, minimum: 1, default: 30}
+        level: {type: string, enum: [basic, silver, gold, vip]}
+    Envelope:
+      type: object
+      required: [success]
+      properties: {success: {type: boolean}, data: {}, error: {$ref: '#/components/schemas/APIError'}}
+    APIError:
+      type: object
+      properties: {code: {type: string}, message: {type: string}}
+  responses:
+    Success: {description: Successful envelope, content: {application/json: {schema: {$ref: '#/components/schemas/Envelope'}}}}
+    Error: {description: Error envelope, content: {application/json: {schema: {$ref: '#/components/schemas/Envelope'}}}}

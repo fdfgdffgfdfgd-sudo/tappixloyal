@@ -1,0 +1,33 @@
+{
+  "name": "tappix",
+  "private": true,
+  "scripts": {
+    "dev": "npm --workspace @tappix/business run dev",
+    "build": "npm --workspace @tappix/business run build",
+    "lint": "npm --workspace @tappix/business run lint",
+    "test:api": "docker run --rm -v \"$PWD/apps/api:/src\" -w /src golang:1.25-alpine sh -lc '/usr/local/go/bin/go test ./...'",
+    "test": "npm run test:api && npm run lint && npm run build && npm run test:integration",
+    "db:up": "docker compose up -d postgres redis",
+    "db:migrate": "sh infrastructure/scripts/migrate.sh",
+    "db:seed-guest-engagement": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000016_guest_engagement.up.sql",
+    "api:up": "docker compose up -d --build api",
+    "stack:up": "docker compose up -d --build",
+    "stack:down": "docker compose down",
+    "db:backup": "sh infrastructure/scripts/backup-postgres.sh",
+    "test:integration": "sh infrastructure/scripts/integration-test.sh",
+    "db:seed-operations": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000005_subscription_devices_demo.up.sql",
+    "db:seed-auth": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000006_customer_auth_super_admin.up.sql",
+    "db:seed-settings": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000007_settings_reviews_notifications.up.sql",
+    "db:seed-notifications": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000008_notification_recipient.up.sql",
+    "db:seed-extensions": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000009_website_booking_api_keys.up.sql",
+    "db:seed-files": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000010_files_integrations.up.sql",
+    "db:seed-rewards": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000011_customer_rewards.up.sql",
+    "db:seed-automation": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000012_loyalty_automation.up.sql",
+    "db:seed-campaigns": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000013_campaigns.up.sql"
+  },
+  "workspaces": ["apps/*", "packages/*"],
+  "overrides": {
+    "postcss": "8.5.25",
+    "sharp": "0.35.3"
+  }
+}
