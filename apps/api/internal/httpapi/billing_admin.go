@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -63,6 +64,14 @@ func (a *api) adminUpdateSubscription(w http.ResponseWriter, r *http.Request) {
 	if in.BillingPeriod == "" {
 		in.BillingPeriod = "monthly"
 	}
+	planCode := normalizePlanCode(in.Plan)
+	if planCode == "" {
+		fail(w, 422, "VALIDATION_ERROR", "Доступны тарифы Starter, Growth и Pro")
+		return
+	}
+	if len(in.Modules) == 0 {
+		in.Modules = defaultModulesForPlan(planCode)
+	}
 	var period any
 	if in.PeriodEndsAt != "" {
 		period = in.PeriodEndsAt
@@ -93,6 +102,30 @@ func (a *api) adminUpdateSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, envelope{Success: true, Data: in})
+}
+
+func normalizePlanCode(plan string) string {
+	switch strings.ToLower(strings.TrimSpace(plan)) {
+	case "starter":
+		return "starter"
+	case "business", "growth":
+		return "growth"
+	case "enterprise", "pro":
+		return "pro"
+	default:
+		return ""
+	}
+}
+
+func defaultModulesForPlan(plan string) []string {
+	modules := []string{"core", "crm", "loyalty", "reviews"}
+	if plan == "growth" || plan == "pro" {
+		modules = append(modules, "analytics", "website", "booking", "email", "sms", "telegram", "partnerships")
+	}
+	if plan == "pro" {
+		modules = append(modules, "api")
+	}
+	return modules
 }
 func (a *api) adminUpdateCompanyStatus(w http.ResponseWriter, r *http.Request) {
 	var in companyStatusInput

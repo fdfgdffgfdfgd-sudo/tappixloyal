@@ -149,7 +149,34 @@ func (a *api) getSubscription(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить подписку")
 		return
 	}
-	write(w, 200, envelope{Success: true, Data: map[string]any{"id": id, "plan": plan, "status": status, "amount": amount, "currency": currency, "billingPeriod": period, "startsAt": start, "currentPeriodEndsAt": end}})
+	planCode := normalizePlanCode(plan)
+	modules := []string{}
+	rows, _ := a.db.Query(r.Context(), `SELECT module_code FROM company_modules WHERE company_id=$1 AND enabled ORDER BY module_code`, companyID(r))
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var code string
+			if rows.Scan(&code) == nil {
+				modules = append(modules, code)
+			}
+		}
+	}
+	entitlements := map[string]any{}
+	if planCode != "" {
+		entitlementRows, _ := a.db.Query(r.Context(), `SELECT code,enabled,limit_value FROM plan_entitlements WHERE plan_code=$1 ORDER BY code`, planCode)
+		if entitlementRows != nil {
+			defer entitlementRows.Close()
+			for entitlementRows.Next() {
+				var code string
+				var enabled bool
+				var limit *int
+				if entitlementRows.Scan(&code, &enabled, &limit) == nil {
+					entitlements[code] = map[string]any{"enabled": enabled, "limit": limit}
+				}
+			}
+		}
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]any{"id": id, "plan": plan, "tier": planCode, "status": status, "amount": amount, "currency": currency, "billingPeriod": period, "startsAt": start, "currentPeriodEndsAt": end, "modules": modules, "entitlements": entitlements}})
 }
 
 func (a *api) listDevices(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,2 @@
+-- Module state cannot be reconstructed safely after repairing subscriptions.
+-- Deliberately keep the corrected state on rollback.
