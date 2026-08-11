@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	posintegration "github.com/tappix/platform/apps/api/internal/integration"
 )
 
 type api struct {
@@ -26,6 +27,8 @@ type api struct {
 	whatsappTemplate     string
 	whatsappGraphVersion string
 	otpDevMode           bool
+	integrationService   *posintegration.Service
+	integrationKey       []byte
 }
 type envelope struct {
 	Success bool      `json:"success"`
@@ -62,7 +65,7 @@ type visitInput struct {
 }
 
 func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Handler {
-	a := &api{db: db, redis: redisClient, jwtSecret: []byte(jwtSecret), whatsappToken: os.Getenv("WHATSAPP_ACCESS_TOKEN"), whatsappPhoneID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"), whatsappTemplate: envOr("WHATSAPP_OTP_TEMPLATE", "tappix_login_code"), whatsappGraphVersion: envOr("WHATSAPP_GRAPH_VERSION", "v23.0"), otpDevMode: os.Getenv("OTP_DEV_MODE") == "true"}
+	a := &api{db: db, redis: redisClient, jwtSecret: []byte(jwtSecret), whatsappToken: os.Getenv("WHATSAPP_ACCESS_TOKEN"), whatsappPhoneID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"), whatsappTemplate: envOr("WHATSAPP_OTP_TEMPLATE", "tappix_login_code"), whatsappGraphVersion: envOr("WHATSAPP_GRAPH_VERSION", "v23.0"), otpDevMode: os.Getenv("OTP_DEV_MODE") == "true", integrationService: posintegration.NewService(db), integrationKey: integrationEncryptionKey(jwtSecret)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("POST /api/v1/auth/login", a.login)
@@ -79,6 +82,13 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	mux.HandleFunc("GET /api/v1/public/sites/{slug}", a.publicWebsite)
 	mux.HandleFunc("POST /api/v1/public/sites/{slug}/bookings", a.publicCreateBooking)
 	mux.HandleFunc("GET /api/v1/public/files/{id}", a.publicFile)
+	mux.HandleFunc("POST /api/v1/integrations/inbound/{key}", a.integrationInboundWebhook)
+	mux.HandleFunc("POST /api/v1/integrations/poster/{key}", a.posterWebhook)
+	mux.Handle("POST /api/v1/integrations/transactions/quote", a.authenticateAPIKey("transactions.read", http.HandlerFunc(a.canonicalTransactionQuote)))
+	mux.Handle("POST /api/v1/integrations/transactions", a.authenticateAPIKey("transactions.write", http.HandlerFunc(a.canonicalTransactionCreate)))
+	mux.Handle("GET /api/v1/integrations/transactions/{id}", a.authenticateAPIKey("transactions.read", http.HandlerFunc(a.canonicalTransactionGet)))
+	mux.Handle("POST /api/v1/integrations/transactions/{id}/refund", a.authenticateAPIKey("transactions.refund", http.HandlerFunc(a.canonicalTransactionRefund)))
+	mux.Handle("POST /api/v1/integration-jobs/{id}/retry", a.authenticateAPIKey("jobs.retry", http.HandlerFunc(a.integrationJobRetry)))
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/v1/auth/me", a.me)
 	protected.HandleFunc("GET /api/v1/auth/sessions", a.listSessions)
@@ -129,6 +139,9 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("PATCH /api/v1/loyalty/rules", a.requireRoles(http.HandlerFunc(a.updateLoyaltyRules), "company_owner"))
 	protected.Handle("POST /api/v1/loyalty/process-birthdays", a.requireRoles(http.HandlerFunc(a.processBirthdays), "company_owner"))
 	protected.Handle("GET /api/v1/loyalty/inactive", a.requireRoles(http.HandlerFunc(a.inactiveCustomers), "company_owner", "employee"))
+	protected.Handle("GET /api/v1/referrals/program", a.requireRoles(http.HandlerFunc(a.getReferralProgram), "company_owner", "employee"))
+	protected.Handle("PUT /api/v1/referrals/program", a.requireRoles(http.HandlerFunc(a.saveReferralProgram), "company_owner"))
+	protected.Handle("GET /api/v1/referrals/analytics", a.requireRoles(http.HandlerFunc(a.referralAnalytics), "company_owner", "employee"))
 	protected.Handle("GET /api/v1/employees", a.requireRoles(http.HandlerFunc(a.listEmployees), "company_owner"))
 	protected.Handle("POST /api/v1/employees", a.requireRoles(http.HandlerFunc(a.createEmployee), "company_owner"))
 	protected.Handle("PATCH /api/v1/employees/{id}", a.requireRoles(http.HandlerFunc(a.updateEmployee), "company_owner"))
@@ -159,6 +172,11 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("PATCH /api/v1/admin/companies/{id}/subscription", a.requireRoles(http.HandlerFunc(a.adminUpdateSubscription), "super_admin"))
 	protected.Handle("PATCH /api/v1/admin/companies/{id}/status", a.requireRoles(http.HandlerFunc(a.adminUpdateCompanyStatus), "super_admin"))
 	protected.Handle("GET /api/v1/analytics", a.requirePermission("analytics.read", http.HandlerFunc(a.analytics)))
+	protected.Handle("GET /api/v1/analytics/business", a.requirePermission("analytics.read", http.HandlerFunc(a.businessAnalytics)))
+	protected.Handle("GET /api/v1/analytics/bonus-liability", a.requirePermission("bonus_liability.read", http.HandlerFunc(a.bonusLiability)))
+	protected.Handle("GET /api/v1/analytics/retention", a.requirePermission("analytics.read", http.HandlerFunc(a.retentionCohorts)))
+	protected.Handle("POST /api/v1/analytics/refresh", a.requireRoles(http.HandlerFunc(a.refreshAnalytics), "company_owner"))
+	protected.Handle("POST /api/v1/loyalty/expire-bonuses", a.requireRoles(http.HandlerFunc(a.expireBonusLotsNow), "company_owner"))
 	protected.Handle("GET /api/v1/audit", a.requireRoles(http.HandlerFunc(a.auditList), "company_owner", "super_admin"))
 	protected.Handle("GET /api/v1/settings/company", a.requireRoles(http.HandlerFunc(a.getCompanySettings), "company_owner"))
 	protected.Handle("PATCH /api/v1/settings/company", a.requireRoles(http.HandlerFunc(a.updateCompanySettings), "company_owner"))
@@ -178,10 +196,35 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("DELETE /api/v1/files/{id}", a.requireRoles(http.HandlerFunc(a.deleteFile), "company_owner"))
 	protected.Handle("GET /api/v1/settings/integrations", a.requireRoles(http.HandlerFunc(a.getIntegrations), "company_owner"))
 	protected.Handle("PATCH /api/v1/settings/integrations", a.requireRoles(http.HandlerFunc(a.updateIntegrations), "company_owner"))
+	protected.Handle("GET /api/v1/integration-connections", a.requirePermission("integrations.read", http.HandlerFunc(a.listIntegrationConnections)))
+	protected.Handle("POST /api/v1/integration-connections", a.requirePermission("integrations.manage", http.HandlerFunc(a.createIntegrationConnection)))
+	protected.Handle("POST /api/v1/integration-connections/{id}/sync", a.requirePermission("integrations.manage", http.HandlerFunc(a.syncIntegrationConnection)))
+	protected.Handle("GET /api/v1/integration-connections/{id}/sync-status", a.requirePermission("integrations.read", http.HandlerFunc(a.integrationSyncStatus)))
+	protected.Handle("POST /api/v1/integration-jobs/{id}/retry", a.requirePermission("integrations.manage", http.HandlerFunc(a.integrationJobRetry)))
+	protected.Handle("GET /api/v1/integration-connections/{id}/location-mappings", a.requirePermission("integrations.read", http.HandlerFunc(a.integrationLocationMappings)))
+	protected.Handle("PATCH /api/v1/integration-connections/{id}/location-mappings/{mappingId}", a.requirePermission("integrations.manage", http.HandlerFunc(a.updateIntegrationLocationMapping)))
+	protected.Handle("GET /api/v1/integration-connections/{id}/customer-links", a.requirePermission("integrations.read", http.HandlerFunc(a.integrationCustomerLinks)))
+	protected.Handle("PATCH /api/v1/integration-connections/{id}/customer-links/{linkId}", a.requirePermission("integrations.manage", http.HandlerFunc(a.updateIntegrationCustomerLink)))
+	protected.Handle("GET /api/v1/integration-connections/{id}/reconciliations", a.requirePermission("integrations.read", http.HandlerFunc(a.integrationReconciliations)))
+	protected.Handle("POST /api/v1/integration-connections/{id}/reconcile", a.requirePermission("integrations.manage", http.HandlerFunc(a.startIntegrationReconciliation)))
+	protected.Handle("POST /api/v1/integration-connections/{id}/inbound-webhook", a.requirePermission("integrations.manage", http.HandlerFunc(a.createInboundWebhook)))
+	protected.Handle("GET /api/v1/integration-connections/{id}/inbound-webhook", a.requirePermission("integrations.read", http.HandlerFunc(a.getInboundWebhook)))
+	protected.Handle("POST /api/v1/webhook-endpoints", a.requirePermission("integrations.manage", http.HandlerFunc(a.createOutboundWebhook)))
+	protected.Handle("GET /api/v1/webhook-deliveries", a.requirePermission("integrations.read", http.HandlerFunc(a.listWebhookDeliveries)))
 	protected.Handle("GET /api/v1/campaigns", a.requireModule("email", a.requireRoles(http.HandlerFunc(a.listCampaigns), "company_owner", "employee")))
+	protected.Handle("GET /api/v1/campaigns/{id}/analytics", a.requireModule("email", a.requirePermission("campaigns.analytics", http.HandlerFunc(a.campaignAnalytics))))
+	protected.Handle("POST /api/v1/campaigns/{id}/events", a.requireModule("email", a.requireRoles(http.HandlerFunc(a.recordCampaignEvent), "company_owner")))
 	protected.Handle("POST /api/v1/campaigns", a.requireModule("email", a.requireRoles(http.HandlerFunc(a.createCampaign), "company_owner")))
 	protected.Handle("GET /api/v1/campaigns/{id}/preview", a.requireModule("email", a.requireRoles(http.HandlerFunc(a.previewCampaign), "company_owner")))
 	protected.Handle("POST /api/v1/campaigns/{id}/send", a.requireModule("email", a.requireRoles(http.HandlerFunc(a.sendCampaign), "company_owner")))
+	protected.Handle("GET /api/v1/campaign-automations", a.requirePermission("automations.read", http.HandlerFunc(a.listCampaignAutomations)))
+	protected.Handle("PATCH /api/v1/campaign-automations/{id}", a.requirePermission("automations.manage", http.HandlerFunc(a.updateCampaignAutomation)))
+	protected.Handle("POST /api/v1/campaign-automations/run", a.requirePermission("automations.manage", http.HandlerFunc(a.runCampaignAutomations)))
+	protected.Handle("GET /api/v1/partnerships", a.requireModule("partnerships", a.requirePermission("partnerships.read", http.HandlerFunc(a.listPartnerships))))
+	protected.Handle("POST /api/v1/partnerships", a.requireModule("partnerships", a.requirePermission("partnerships.manage", http.HandlerFunc(a.createPartnership))))
+	protected.Handle("POST /api/v1/partnerships/{id}/approve", a.requireModule("partnerships", a.requirePermission("partnerships.manage", http.HandlerFunc(a.approvePartnership))))
+	protected.Handle("POST /api/v1/partnerships/{id}/offers", a.requireModule("partnerships", a.requirePermission("partnerships.manage", http.HandlerFunc(a.createPartnershipOffer))))
+	protected.Handle("POST /api/v1/partnership-offers/redeem", a.requireModule("partnerships", a.requirePermission("partnerships.manage", http.HandlerFunc(a.redeemPartnershipOffer))))
 	mux.Handle("/api/v1/", a.authenticate(a.requireWritableSubscription(a.auditMutations(protected))))
 	return recoverer(cors(requestID(a.rateLimit(mux))))
 }
@@ -392,7 +435,11 @@ func (a *api) createVisit(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.Exec(r.Context(), `UPDATE customers SET total_visits=total_visits+1,total_points=total_points+$3,level=CASE WHEN total_visits+1>=50 THEN 'vip' WHEN total_visits+1>=25 THEN 'gold' WHEN total_visits+1>=10 THEN 'silver' ELSE 'basic' END,updated_at=now() WHERE company_id=$1 AND id=$2`, tenant, in.CustomerID, points)
 	}
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `INSERT INTO bonus_ledger(company_id,customer_id,visit_id,operation,amount,balance_after,description) VALUES($1,$2,$3,'credit',$4,$5,'Бонус за посещение')`, tenant, in.CustomerID, visitID, points, balance+points)
+		var ledgerID string
+		err = tx.QueryRow(r.Context(), `INSERT INTO bonus_ledger(company_id,customer_id,visit_id,operation,amount,balance_after,description) VALUES($1,$2,$3,'credit',$4,$5,'Бонус за посещение') RETURNING id`, tenant, in.CustomerID, visitID, points, balance+points).Scan(&ledgerID)
+		if err == nil && points > 0 {
+			err = posintegration.IssueBonusLot(r.Context(), tx, tenant, in.CustomerID, ledgerID, "", points)
+		}
 	}
 	rewardName := ""
 	if err == nil {

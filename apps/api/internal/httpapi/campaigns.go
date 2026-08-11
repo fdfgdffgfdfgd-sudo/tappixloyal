@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"net/http"
@@ -10,16 +12,20 @@ import (
 )
 
 type campaignInput struct {
-	Name         string `json:"name"`
-	Subject      string `json:"subject"`
-	Body         string `json:"body"`
-	Segment      string `json:"segment"`
-	InactiveDays int    `json:"inactiveDays"`
-	Level        string `json:"level"`
+	Name                  string  `json:"name"`
+	Subject               string  `json:"subject"`
+	Body                  string  `json:"body"`
+	Segment               string  `json:"segment"`
+	InactiveDays          int     `json:"inactiveDays"`
+	Level                 string  `json:"level"`
+	MessageCost           float64 `json:"messageCost"`
+	RewardCost            float64 `json:"rewardCost"`
+	AttributionWindowDays int     `json:"attributionWindowDays"`
+	HoldoutPercent        int     `json:"holdoutPercent"`
 }
 
 func (a *api) listCampaigns(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query(r.Context(), `SELECT id,name,channel,subject,segment,status,audience_count,sent_count,failed_count,created_at,sent_at FROM marketing_campaigns WHERE company_id=$1 ORDER BY created_at DESC LIMIT 100`, companyID(r))
+	rows, err := a.db.Query(r.Context(), `SELECT id,name,channel,subject,segment,status,audience_count,sent_count,failed_count,message_cost,reward_cost,attribution_window_days,holdout_percent,created_at,sent_at FROM marketing_campaigns WHERE company_id=$1 ORDER BY created_at DESC LIMIT 100`, companyID(r))
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить кампании")
 		return
@@ -28,11 +34,12 @@ func (a *api) listCampaigns(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	for rows.Next() {
 		var id, name, channel, subject, segment, status string
-		var audience, sent, failed int
+		var audience, sent, failed, attributionDays, holdoutPercent int
+		var messageCost, rewardCost float64
 		var created time.Time
 		var sentAt *time.Time
-		if rows.Scan(&id, &name, &channel, &subject, &segment, &status, &audience, &sent, &failed, &created, &sentAt) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "channel": channel, "subject": subject, "segment": segment, "status": status, "audienceCount": audience, "sentCount": sent, "failedCount": failed, "createdAt": created, "sentAt": sentAt})
+		if rows.Scan(&id, &name, &channel, &subject, &segment, &status, &audience, &sent, &failed, &messageCost, &rewardCost, &attributionDays, &holdoutPercent, &created, &sentAt) == nil {
+			items = append(items, map[string]any{"id": id, "name": name, "channel": channel, "subject": subject, "segment": segment, "status": status, "audienceCount": audience, "sentCount": sent, "failedCount": failed, "messageCost": messageCost, "rewardCost": rewardCost, "attributionWindowDays": attributionDays, "holdoutPercent": holdoutPercent, "createdAt": created, "sentAt": sentAt})
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: items})
@@ -49,9 +56,16 @@ func (a *api) createCampaign(w http.ResponseWriter, r *http.Request) {
 	if in.InactiveDays <= 0 {
 		in.InactiveDays = 30
 	}
+	if in.AttributionWindowDays == 0 {
+		in.AttributionWindowDays = 7
+	}
+	if in.AttributionWindowDays < 1 || in.AttributionWindowDays > 90 || in.MessageCost < 0 || in.RewardCost < 0 || (in.HoldoutPercent != 0 && (in.HoldoutPercent < 5 || in.HoldoutPercent > 10)) {
+		fail(w, 422, "INVALID_CAMPAIGN_ECONOMICS", "Окно атрибуции 1–90 дней, holdout — 0 или 5–10%")
+		return
+	}
 	claims, _ := r.Context().Value(identityKey).(tokenClaims)
 	var id string
-	err := a.db.QueryRow(r.Context(), `INSERT INTO marketing_campaigns(company_id,name,subject,body,segment,segment_settings,created_by) VALUES($1,$2,$3,$4,$5,jsonb_build_object('inactiveDays',$6::integer,'level',$7::text),$8) RETURNING id`, companyID(r), strings.TrimSpace(in.Name), strings.TrimSpace(in.Subject), strings.TrimSpace(in.Body), in.Segment, in.InactiveDays, in.Level, claims.Subject).Scan(&id)
+	err := a.db.QueryRow(r.Context(), `INSERT INTO marketing_campaigns(company_id,name,subject,body,segment,segment_settings,message_cost,reward_cost,attribution_window_days,holdout_percent,created_by) VALUES($1,$2,$3,$4,$5,jsonb_build_object('inactiveDays',$6::integer,'level',$7::text),$8,$9,$10,$11,$12) RETURNING id`, companyID(r), strings.TrimSpace(in.Name), strings.TrimSpace(in.Subject), strings.TrimSpace(in.Body), in.Segment, in.InactiveDays, in.Level, in.MessageCost, in.RewardCost, in.AttributionWindowDays, in.HoldoutPercent, claims.Subject).Scan(&id)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось создать кампанию")
 		return
@@ -101,8 +115,9 @@ func (a *api) previewCampaign(w http.ResponseWriter, r *http.Request) {
 }
 func (a *api) sendCampaign(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	var subject, body, status string
-	if a.db.QueryRow(r.Context(), `SELECT subject,body,status FROM marketing_campaigns WHERE company_id=$1 AND id=$2`, companyID(r), id).Scan(&subject, &body, &status) != nil {
+	var subject, body, status, holdoutSeed string
+	var holdoutPercent int
+	if a.db.QueryRow(r.Context(), `SELECT subject,body,status,holdout_percent,holdout_seed FROM marketing_campaigns WHERE company_id=$1 AND id=$2`, companyID(r), id).Scan(&subject, &body, &status, &holdoutPercent, &holdoutSeed) != nil {
 		fail(w, 404, "CAMPAIGN_NOT_FOUND", "Кампания не найдена")
 		return
 	}
@@ -121,7 +136,13 @@ func (a *api) sendCampaign(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = a.db.Exec(r.Context(), `UPDATE marketing_campaigns SET status='sending',audience_count=$3 WHERE company_id=$1 AND id=$2`, companyID(r), id, len(audience))
 	sent, failed := 0, 0
+	holdout := 0
 	for _, x := range audience {
+		if campaignHoldout(holdoutSeed, x["id"], holdoutPercent) {
+			holdout++
+			_, _ = a.db.Exec(r.Context(), `INSERT INTO campaign_recipients(company_id,campaign_id,customer_id,recipient,status,experiment_group) VALUES($1,$2,$3,$4,'held_out','holdout') ON CONFLICT(campaign_id,customer_id) DO NOTHING`, companyID(r), id, x["id"], x["email"])
+			continue
+		}
 		personal := strings.ReplaceAll(body, "{{name}}", x["name"])
 		e := smtp.SendMail(envValue("SMTP_HOST", "mailpit")+":"+envValue("SMTP_PORT", "1025"), nil, fromAddress(envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>")), []string{x["email"]}, []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s", envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>"), x["email"], subject, personal)))
 		recipientStatus, errorText := "sent", ""
@@ -134,7 +155,11 @@ func (a *api) sendCampaign(w http.ResponseWriter, r *http.Request) {
 		} else {
 			sent++
 		}
-		_, _ = a.db.Exec(r.Context(), `INSERT INTO campaign_recipients(company_id,campaign_id,customer_id,recipient,status,error,sent_at) VALUES($1,$2,$3,$4,$5,nullif($6,''),$7) ON CONFLICT(campaign_id,customer_id) DO NOTHING`, companyID(r), id, x["id"], x["email"], recipientStatus, errorText, sentAt)
+		var recipientID string
+		_ = a.db.QueryRow(r.Context(), `INSERT INTO campaign_recipients(company_id,campaign_id,customer_id,recipient,status,error,sent_at,delivered_at,experiment_group) VALUES($1,$2,$3,$4,$5,nullif($6,''),$7,$7,'treatment') ON CONFLICT(campaign_id,customer_id) DO UPDATE SET status=excluded.status,error=excluded.error,sent_at=excluded.sent_at,delivered_at=excluded.delivered_at RETURNING id`, companyID(r), id, x["id"], x["email"], recipientStatus, errorText, sentAt).Scan(&recipientID)
+		if recipientStatus == "sent" {
+			_, _ = a.db.Exec(r.Context(), `INSERT INTO campaign_conversions(company_id,campaign_id,campaign_recipient_id,customer_id,conversion_type,idempotency_key) VALUES($1,$2,$3,$4,'delivered',$5) ON CONFLICT DO NOTHING`, companyID(r), id, recipientID, x["id"], "campaign-delivered:"+recipientID)
+		}
 	}
 	final := "sent"
 	if failed > 0 && sent > 0 {
@@ -143,5 +168,13 @@ func (a *api) sendCampaign(w http.ResponseWriter, r *http.Request) {
 		final = "failed"
 	}
 	_, _ = a.db.Exec(r.Context(), `UPDATE marketing_campaigns SET status=$3,sent_count=$4,failed_count=$5,sent_at=now() WHERE company_id=$1 AND id=$2`, companyID(r), id, final, sent, failed)
-	write(w, 200, envelope{Success: true, Data: map[string]any{"status": final, "audience": len(audience), "sent": sent, "failed": failed}})
+	write(w, 200, envelope{Success: true, Data: map[string]any{"status": final, "audience": len(audience), "sent": sent, "failed": failed, "holdout": holdout}})
+}
+
+func campaignHoldout(seed, customerID string, percent int) bool {
+	if percent <= 0 {
+		return false
+	}
+	digest := sha256.Sum256([]byte(seed + ":" + customerID))
+	return int(binary.BigEndian.Uint32(digest[:4])%100) < percent
 }

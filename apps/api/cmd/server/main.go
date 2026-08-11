@@ -36,6 +36,8 @@ func main() {
 		os.Exit(1)
 	}
 	httpapi.StartAutomation(ctx, db)
+	httpapi.StartIntegrationWorkers(ctx, db, env("JWT_SECRET", "local-dev-secret-change-me"))
+	httpapi.StartAnalyticsProjectionWorker(ctx, db)
 
 	server := &http.Server{Addr: env("HTTP_ADDR", ":8080"), Handler: httpapi.New(db, redisClient, env("JWT_SECRET", "local-dev-secret-change-me")), ReadHeaderTimeout: 5 * time.Second}
 	go func() {

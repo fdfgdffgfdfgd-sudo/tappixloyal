@@ -33,8 +33,10 @@ type bookingStatusInput struct {
 	Status string `json:"status"`
 }
 type apiKeyInput struct {
-	Name      string `json:"name"`
-	ExpiresAt string `json:"expiresAt"`
+	Name      string   `json:"name"`
+	ExpiresAt string   `json:"expiresAt"`
+	Scopes    []string `json:"scopes"`
+	Sandbox   bool     `json:"sandbox"`
 }
 
 func (a *api) getWebsite(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +146,7 @@ func (a *api) updateBooking(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, envelope{Success: true, Data: in})
 }
 func (a *api) listAPIKeys(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query(r.Context(), `SELECT id,name,prefix,last_used_at,expires_at,revoked_at,created_at FROM api_keys WHERE company_id=$1 ORDER BY created_at DESC`, companyID(r))
+	rows, err := a.db.Query(r.Context(), `SELECT id,name,prefix,scopes,sandbox,last_used_at,expires_at,revoked_at,created_at FROM api_keys WHERE company_id=$1 ORDER BY created_at DESC`, companyID(r))
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить API-ключи")
 		return
@@ -153,10 +155,12 @@ func (a *api) listAPIKeys(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	for rows.Next() {
 		var id, name, prefix string
+		var scopes []string
+		var sandbox bool
 		var last, expires, revoked *time.Time
 		var created time.Time
-		if rows.Scan(&id, &name, &prefix, &last, &expires, &revoked, &created) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "prefix": prefix, "lastUsedAt": last, "expiresAt": expires, "revokedAt": revoked, "createdAt": created, "active": revoked == nil && (expires == nil || expires.After(time.Now()))})
+		if rows.Scan(&id, &name, &prefix, &scopes, &sandbox, &last, &expires, &revoked, &created) == nil {
+			items = append(items, map[string]any{"id": id, "name": name, "prefix": prefix, "scopes": scopes, "sandbox": sandbox, "lastUsedAt": last, "expiresAt": expires, "revokedAt": revoked, "createdAt": created, "active": revoked == nil && (expires == nil || expires.After(time.Now()))})
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: items})
@@ -170,6 +174,16 @@ func (a *api) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "VALIDATION_ERROR", "Укажите название ключа")
 		return
 	}
+	allowedScopes := map[string]bool{"transactions.read": true, "transactions.write": true, "transactions.refund": true, "jobs.retry": true}
+	if len(in.Scopes) == 0 {
+		in.Scopes = []string{"transactions.read", "transactions.write"}
+	}
+	for _, scope := range in.Scopes {
+		if !allowedScopes[scope] {
+			fail(w, 422, "INVALID_SCOPE", "API-ключ содержит неизвестный scope")
+			return
+		}
+	}
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		fail(w, 500, "KEY_ERROR", "Не удалось создать ключ")
@@ -182,12 +196,12 @@ func (a *api) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		expires = in.ExpiresAt
 	}
 	var id string
-	err := a.db.QueryRow(r.Context(), `INSERT INTO api_keys(company_id,name,prefix,secret_hash,expires_at) VALUES($1,$2,$3,$4,$5) RETURNING id`, companyID(r), strings.TrimSpace(in.Name), secret[:12], hex.EncodeToString(sum[:]), expires).Scan(&id)
+	err := a.db.QueryRow(r.Context(), `INSERT INTO api_keys(company_id,name,prefix,secret_hash,expires_at,scopes,sandbox) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, companyID(r), strings.TrimSpace(in.Name), secret[:12], hex.EncodeToString(sum[:]), expires, in.Scopes, in.Sandbox).Scan(&id)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось сохранить ключ")
 		return
 	}
-	write(w, 201, envelope{Success: true, Data: map[string]string{"id": id, "key": secret, "warning": "Скопируйте ключ сейчас — повторно он не показывается"}})
+	write(w, 201, envelope{Success: true, Data: map[string]any{"id": id, "key": secret, "scopes": in.Scopes, "sandbox": in.Sandbox, "warning": "Скопируйте ключ сейчас — повторно он не показывается"}})
 }
 func (a *api) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	tag, err := a.db.Exec(r.Context(), `UPDATE api_keys SET revoked_at=now() WHERE company_id=$1 AND id=$2 AND revoked_at IS NULL`, companyID(r), r.PathValue("id"))

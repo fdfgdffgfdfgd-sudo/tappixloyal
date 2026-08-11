@@ -17,9 +17,21 @@ test "$expired_reset" = "410"
 
 unauthorized=$(curl -sS -o /dev/null -w '%{http_code}' "$API_URL/customers")
 test "$unauthorized" = "401"
+canonical_unauthorized=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_URL/integrations/transactions/quote" -H 'Content-Type: application/json' -d '{}')
+test "$canonical_unauthorized" = "401"
 
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/dashboard" | jq -e '.success == true and (.data.latestCustomers | type == "array") and (.data.latestVisits | type == "array") and (.data.onboarding | type == "object") and .data.bonusRedeemed >= 0 and .data.nfcConversion >= 0' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/analytics/business" | jq -e '.success == true and (.data.repeatPurchase.windows | length == 3) and (.data.averageCheck.overall >= 0) and (.data.ltv.type == "historical") and (.data.rfm.segments | type == "array") and (.data.branches | type == "array") and (.data.funnel | length == 7)' >/dev/null
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/analytics/refresh" | jq -e '.data.refreshed == true' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/analytics/bonus-liability" | jq -e '.data.issued >= 0 and .data.liability >= 0 and .data.expectedRedemptionCost >= 0' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/analytics/retention?cohortType=registration&periods=4" | jq -e '.data.grain == "month" and .data.periods == 4 and (.data.cohorts | type == "array")' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/analytics/retention?cohortType=first_purchase&periods=4" | jq -e '.data.grain == "week" and (.data.cohorts | type == "array")' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/integration-connections" | jq -e '.data | type == "array"' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/webhook-deliveries" | jq -e '.data | type == "array"' >/dev/null
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/campaigns" | jq -e '.data | type == "array"' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/campaign-automations" | jq -e '.data | length == 3 and ([.[].triggerType] | sort) == (["birthday_bonus","bonus_expiry_3d","winback_30d"] | sort)' >/dev/null
+invalid_holdout=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_URL/campaigns" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"name":"Invalid holdout","subject":"Test","body":"Test","segment":"all","holdoutPercent":3}')
+test "$invalid_holdout" = "422"
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/loyalty/inactive?days=30" | jq -e '.data.total >= 0 and (.data.items | type == "array")' >/dev/null
 curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/loyalty/process-birthdays" | jq -e '.data.processed >= 0' >/dev/null
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers" | jq -e '.data.total >= 1' >/dev/null

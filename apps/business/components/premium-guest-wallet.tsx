@@ -8,6 +8,7 @@ import {
   Gift,
   History,
   LockKeyhole,
+  LogOut,
   MessageCircle,
   Nfc,
   PartyPopper,
@@ -17,7 +18,6 @@ import {
   Star,
   Trophy,
   WalletCards,
-  Zap,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
@@ -97,6 +97,8 @@ export function PremiumGuestWallet() {
     [identity, setIdentity] = useState({ company: "dentline", phone: "" }),
     [devCode, setDevCode] = useState(""),
     [message, setMessage] = useState(""),
+    [initializing, setInitializing] = useState(true),
+    [historyFilter, setHistoryFilter] = useState<"all" | "credit" | "debit">("all"),
     [spinning, setSpinning] = useState(false),
     [prize, setPrize] = useState("");
   async function load(t: string) {
@@ -118,7 +120,8 @@ export function PremiumGuestWallet() {
       load(saved).catch(() => {
         localStorage.removeItem("customer_access");
         setToken("");
-      });
+      }).finally(() => setInitializing(false));
+    else setInitializing(false);
   }, []);
   function accept(data: { accessToken: string; refreshToken: string }) {
     localStorage.setItem("customer_access", data.accessToken);
@@ -185,7 +188,7 @@ export function PremiumGuestWallet() {
   }
   const grouped = useMemo(
     () =>
-      history.reduce<Record<string, Entry[]>>((a, x) => {
+      history.filter((entry) => historyFilter === "all" || entry.operation === historyFilter).reduce<Record<string, Entry[]>>((a, x) => {
         const d = new Date(x.createdAt).toLocaleDateString("ru-RU", {
           day: "numeric",
           month: "long",
@@ -193,8 +196,10 @@ export function PremiumGuestWallet() {
         (a[d] ??= []).push(x);
         return a;
       }, {}),
-    [history],
+    [history, historyFilter],
   );
+  if (initializing)
+    return <main className="wallet-loading" aria-busy="true" aria-label="Загрузка бонусной карты"><div/><span/><span/><span/></main>;
   if (!token || !profile || !wallet)
     return (
       <main className="premium-auth">
@@ -213,10 +218,8 @@ export function PremiumGuestWallet() {
             <h1>Ваши бонусы всегда рядом</h1>
             <p>Получите одноразовый код в WhatsApp — никаких паролей.</p>
             {message && <div role="alert">{message}</div>}
-            <label>
-              Компания
-              <input name="company" defaultValue="dentline" required />
-            </label>
+            <input name="company" type="hidden" value={identity.company} readOnly />
+            <div className="auth-company">Карта компании <strong>{identity.company}</strong></div>
             <label>
               Номер WhatsApp
               <input
@@ -283,10 +286,8 @@ export function PremiumGuestWallet() {
             <small>РЕЗЕРВНЫЙ ВХОД</small>
             <h1>Короткий код</h1>
             {message && <div role="alert">{message}</div>}
-            <label>
-              Компания
-              <input name="company" defaultValue="dentline" required />
-            </label>
+            <input name="company" type="hidden" value={identity.company} readOnly />
+            <div className="auth-company">Карта компании <strong>{identity.company}</strong></div>
             <label>
               Телефон
               <input name="phone" type="tel" required />
@@ -323,7 +324,9 @@ export function PremiumGuestWallet() {
     discountStep = Math.max(1, profile.portal?.discountStep || 2),
     discountMax = Math.max(discountStart, profile.portal?.discountMax || 15),
     currentDiscount = Math.min(discountMax, discountStart + Math.floor(profile.visits / visitsPerStep) * discountStep),
-    visitsToDiscount = currentDiscount >= discountMax ? 0 : visitsPerStep - (profile.visits % visitsPerStep);
+    visitsToDiscount = currentDiscount >= discountMax ? 0 : visitsPerStep - (profile.visits % visitsPerStep),
+    monthLabel = new Intl.DateTimeFormat("ru-RU", { month: "long" }).format(new Date()).toLocaleUpperCase("ru-RU");
+  function signOut(){localStorage.removeItem("customer_access");localStorage.removeItem("customer_refresh");setToken("");setProfile(null);setWallet(null)}
   return (
     <main
       className={`premium-wallet theme-${profile.portal?.themeMode || "auto"}`}
@@ -339,18 +342,9 @@ export function PremiumGuestWallet() {
           <span>{profile.company.slice(0, 1)}</span>
           <strong>{profile.company}</strong>
         </div>
-        <button
-          onClick={() =>
-            navigator.share?.({
-              title: `Карта ${profile.company}`,
-              url: location.href,
-            })
-          }
-        >
-          <Share2 />
-        </button>
+        <nav aria-label="Действия с картой"><button aria-label="Поделиться бонусной картой" onClick={() => navigator.share?.({title: `Карта ${profile.company}`,url: location.href})}><Share2 /></button><button aria-label="Выйти из гостевого кабинета" onClick={signOut}><LogOut/></button></nav>
       </header>
-      <section className="wallet-stage">
+      <section className="wallet-stage" id="wallet-card">
         <div className="loyalty-card">
           <i className="card-aurora" />
           <div className="card-top">
@@ -387,7 +381,7 @@ export function PremiumGuestWallet() {
                 bgColor="#ffffff"
                 fgColor="#12121a"
               />
-              <small>Для сотрудника</small>
+              <small>Показать на кассе</small>
             </div>
           </div>
         </div>
@@ -397,6 +391,7 @@ export function PremiumGuestWallet() {
         </p>
       </section>
       <div className="wallet-content">
+        <header className="wallet-content-head"><div><small>ДОБРО ПОЖАЛОВАТЬ</small><h1>{profile.firstName}, всё важное здесь</h1></div><a href="#wallet-history">История</a></header>
         {profile.portal?.loyaltyMode === "stamps" && (
           <section className="stamp-card">
             <header>
@@ -453,7 +448,7 @@ export function PremiumGuestWallet() {
           </div>
           <p>{(levels[wallet.level.current] || levels.Bronze).benefit}</p>
         </section>
-        <section className="next-goal">
+        <section className="next-goal" id="next-reward">
           <span>
             <Gift />
           </span>
@@ -476,37 +471,6 @@ export function PremiumGuestWallet() {
             %
           </b>
         </section>
-        <section className="privileges">
-          <header>
-            <small>ДОСТУПНО СЕЙЧАС</small>
-            <h2>Мои привилегии</h2>
-          </header>
-          <article>
-            <span>
-              <Zap />
-            </span>
-            <div>
-              <strong>{profile.points} бонусов</strong>
-              <small>
-                Можно оплатить до{" "}
-                {(profile.points * 10).toLocaleString("ru-RU")} ₸ услуг
-              </small>
-            </div>
-            <ChevronRight />
-          </article>
-          <article>
-            <span>
-              <Star />
-            </span>
-            <div>
-              <strong>Уровень {wallet.level.current}</strong>
-              <small>
-                {(levels[wallet.level.current] || levels.Bronze).benefit}
-              </small>
-            </div>
-            <ChevronRight />
-          </article>
-        </section>
         {profile.portal?.promotionsEnabled !== false && (
           <section className="personal-offer">
             <small>ТОЛЬКО ДЛЯ ВАС</small>
@@ -524,9 +488,12 @@ export function PremiumGuestWallet() {
             </button>
           </section>
         )}
+        <details className="wallet-more">
+          <summary><span><Gift/>Больше возможностей</span><small>Статистика, колесо и достижения</small><ChevronRight/></summary>
+          <div className="wallet-more-content">
         <section className="month-value">
           <header>
-            <small>АВГУСТ</small>
+            <small>{monthLabel}</small>
             <h2>Ваша польза за месяц</h2>
           </header>
           <div>
@@ -600,10 +567,12 @@ export function PremiumGuestWallet() {
             ))}
           </div>
         </section>
-        <section className="activity-timeline">
+          </div>
+        </details>
+        <section className="activity-timeline" id="wallet-history">
           <header>
-            <small>ПОСЛЕДНИЕ СОБЫТИЯ</small>
-            <h2>Активность</h2>
+            <div><small>ПОСЛЕДНИЕ СОБЫТИЯ</small><h2>Активность</h2></div>
+            <div className="history-filters" aria-label="Фильтр истории">{([['all','Все'],['credit','Начислено'],['debit','Списано']] as const).map(([value,label])=><button className={historyFilter===value?'current':''} aria-pressed={historyFilter===value} onClick={()=>setHistoryFilter(value)} key={value}>{label}</button>)}</div>
           </header>
           {Object.entries(grouped)
             .slice(0, 4)
@@ -629,6 +598,7 @@ export function PremiumGuestWallet() {
                 ))}
               </div>
             ))}
+          {!Object.keys(grouped).length && <p className="wallet-empty">Операций этого типа пока нет</p>}
         </section>
         <button
           className="refer-card"
@@ -665,15 +635,16 @@ export function PremiumGuestWallet() {
       </div>
       {prize && (
         <div className="prize-overlay" onClick={() => setPrize("")}>
-          <div>
+          <div role="dialog" aria-modal="true" aria-labelledby="prize-title" onClick={event => event.stopPropagation()}>
             <PartyPopper />
             <small>ПОЗДРАВЛЯЕМ!</small>
-            <h2>{prize}</h2>
+            <h2 id="prize-title">{prize}</h2>
             <p>Приз уже добавлен в ваш кабинет.</p>
-            <button>Забрать подарок</button>
+            <button onClick={() => setPrize("")}>Забрать подарок</button>
           </div>
         </div>
       )}
+      <nav className="wallet-tabbar" aria-label="Навигация по карте"><a href="#wallet-card"><WalletCards/><span>Карта</span></a><a href="#next-reward"><Gift/><span>Награда</span></a><a href="#wallet-history"><History/><span>История</span></a></nav>
     </main>
   );
 }

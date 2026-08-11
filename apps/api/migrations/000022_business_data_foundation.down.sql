@@ -1,0 +1,22 @@
+DROP INDEX IF EXISTS bonus_ledger_sales_transaction_idx;
+ALTER TABLE bonus_ledger DROP COLUMN IF EXISTS sales_transaction_id;
+DROP INDEX IF EXISTS visits_sales_transaction_uidx;
+ALTER TABLE visits DROP COLUMN IF EXISTS sales_transaction_id;
+
+DROP TABLE IF EXISTS report_schedules;
+DROP TABLE IF EXISTS analytics_customer_features;
+DROP TABLE IF EXISTS analytics_daily_facts;
+DROP TABLE IF EXISTS referral_rewards;
+DROP TABLE IF EXISTS referral_attributions;
+DROP TABLE IF EXISTS referral_programs;
+DROP TABLE IF EXISTS campaign_conversions;
+DROP TABLE IF EXISTS integration_failures;
+DROP TABLE IF EXISTS integration_jobs;
+DROP TABLE IF EXISTS integration_sync_cursors;
+DROP TABLE IF EXISTS customer_attributions;
+DROP TABLE IF EXISTS customer_events;
+DROP TABLE IF EXISTS payments;
+DROP TABLE IF EXISTS sales_transaction_items;
+DROP TABLE IF EXISTS sales_transactions;
+DROP TABLE IF EXISTS integration_location_mappings;
+DROP TABLE IF EXISTS integration_connections;

@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import {
   BarChart3,
   AlertTriangle,
+  Banknote,
   Bell,
   Building2,
   Cake,
   Check,
   CreditCard,
+  Crown,
   Clock3,
   FileDown,
   Gift,
@@ -18,6 +20,7 @@ import {
   Pencil,
   Plus,
   QrCode,
+  RefreshCw,
   Search,
   Repeat2,
   Send,
@@ -77,6 +80,7 @@ export function CustomersPage() {
   const [items, setItems] = useState<Customer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [q, setQ] = useState("");
+  const [searchQ, setSearchQ] = useState("");
   const [level, setLevel] = useState("");
   const [branch, setBranch] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -88,8 +92,12 @@ export function CustomersPage() {
   const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [filtersReady, setFiltersReady] = useState(false);
   const query = new URLSearchParams({
-    search: q,
+    search: searchQ,
     level,
     branch,
     birthday,
@@ -97,42 +105,61 @@ export function CustomersPage() {
     sort,
     order,
   }).toString();
-  const load = () =>
-    api<{ items: Customer[]; pages: number; total: number }>(
-      `/customers?limit=20&page=${page}&${query}`,
-    )
-      .then((x) => {
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const x = await api<{ items: Customer[]; pages: number; total: number }>(`/customers?limit=20&page=${page}&${query}`);
         setItems(x.items);
         setPages(Math.max(1, x.pages));
         setTotal(x.total);
-      })
-      .catch((e) => setMsg(e.message));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить клиентов");
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => {
     api<Branch[]>("/branches")
       .then(setBranches)
       .catch(() => {});
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("tappix_customer_filters") || "{}");
+      setQ(saved.q || ""); setSearchQ(saved.q || ""); setLevel(saved.level || ""); setBranch(saved.branch || ""); setBirthday(saved.birthday || ""); setMinPoints(saved.minPoints || ""); setSort(saved.sort || "createdAt"); setOrder(saved.order || "desc"); setPage(Number(saved.page) || 1);
+    } catch { /* ignore invalid saved filters */ }
+    setFiltersReady(true);
   }, []);
   useEffect(() => {
+    const timer = window.setTimeout(() => setSearchQ(q.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+  useEffect(() => {
+    if (!filtersReady) return;
     void load();
-  }, [q, level, branch, birthday, minPoints, sort, order, page]);
+    sessionStorage.setItem("tappix_customer_filters", JSON.stringify({q:searchQ,level,branch,birthday,minPoints,sort,order,page}));
+  }, [filtersReady, searchQ, level, branch, birthday, minPoints, sort, order, page]);
   useEffect(
     () => setPage(1),
-    [q, level, branch, birthday, minPoints, sort, order],
+    [searchQ, level, branch, birthday, minPoints, sort, order],
   );
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    const payload = Object.fromEntries(form);
+    const digits = String(payload.phone || "").replace(/\D/g, "");
+    payload.phone = digits.length === 11 && digits.startsWith("8") ? `+7${digits.slice(1)}` : digits.length === 11 ? `+${digits}` : String(payload.phone || "").trim();
+    setSaving(true);
     try {
       await api("/customers", {
         method: "POST",
-        body: JSON.stringify(Object.fromEntries(form)),
+        body: JSON.stringify(payload),
       });
       setOpen(false);
       setMsg("Клиент создан");
       await load();
     } catch (error) {
       setMsg(error instanceof Error ? error.message : "Ошибка");
-    }
+    } finally { setSaving(false); }
   }
   async function exportCSV() {
     try {
@@ -158,6 +185,7 @@ export function CustomersPage() {
       subtitle="CRM вашей компании"
     >
       <Notice text={msg} />
+      {error && <div className="crm-error" role="alert"><span><AlertTriangle/><strong>Не удалось загрузить клиентов</strong><small>{error}</small></span><button onClick={() => void load()}><RefreshCw/>Повторить</button></div>}
       <div className="toolbar crm-toolbar">
         <label className="searchbox">
           <Search />
@@ -238,7 +266,7 @@ export function CustomersPage() {
         <button onClick={exportCSV}><FileDown/>Экспорт CSV</button>
       </div>
       </details>
-      <div className="data-card">
+      <div className={`data-card ${loading ? "is-loading" : ""}`} aria-busy={loading}>
         <table>
           <thead>
             <tr>
@@ -251,20 +279,20 @@ export function CustomersPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((c) => (
+            {!loading && items.map((c) => (
               <tr key={c.id}>
-                <td>
+                <td data-label="Клиент">
                   <Link className="customer-link" href={`/customers/${c.id}`}>
                     <strong>
                       {c.firstName} {c.lastName}
                     </strong>
                   </Link>
                 </td>
-                <td>{c.phone}</td>
-                <td>
+                <td data-label="Телефон">{c.phone}</td>
+                <td data-label="Уровень">
                   <span className="tag">{c.level}</span>
                 </td>
-                <td>
+                <td data-label="Сегмент">
                   <span
                     className={`customer-segment segment-${c.totalVisits >= 10 ? "loyal" : c.totalVisits >= 5 ? "frequent" : "new"}`}
                   >
@@ -275,15 +303,16 @@ export function CustomersPage() {
                         : "Новый"}
                   </span>
                 </td>
-                <td>{c.totalVisits}</td>
-                <td>
+                <td data-label="Посещения">{c.totalVisits}</td>
+                <td data-label="Баланс">
                   <b>{c.totalPoints} б.</b>
                 </td>
               </tr>
             ))}
+            {loading && Array.from({length:5},(_,index)=><tr className="crm-skeleton" key={index}>{Array.from({length:6},(_,cell)=><td key={cell}><span/></td>)}</tr>)}
           </tbody>
         </table>
-        {!items.length && (
+        {!loading && !error && !items.length && (
           <div className="zero">
             <Users />
             <strong>Клиенты не найдены</strong>
@@ -291,7 +320,7 @@ export function CustomersPage() {
           </div>
         )}
       </div>
-      <nav className="crm-pagination" aria-label="Пагинация клиентов">
+      {!error && <nav className="crm-pagination" aria-label="Пагинация клиентов">
         <span>Найдено: {total}</span>
         <div>
           <button disabled={page <= 1} onClick={() => setPage((x) => x - 1)}>
@@ -307,36 +336,36 @@ export function CustomersPage() {
             Далее
           </button>
         </div>
-      </nav>
+      </nav>}
       {open && (
-        <div className="sheet-bg">
+        <div className="sheet-bg" onMouseDown={event => { if(event.target===event.currentTarget&&!saving)setOpen(false) }}>
           <form className="sheet" onSubmit={create}>
             <h2>Новый клиент</h2>
             <label>
               Имя
-              <input name="firstName" required />
+              <input name="firstName" autoComplete="given-name" required autoFocus />
             </label>
             <label>
               Фамилия
-              <input name="lastName" />
+              <input name="lastName" autoComplete="family-name" />
             </label>
             <label>
               Телефон
-              <input name="phone" type="tel" required />
+              <input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+7 700 000 00 00" required />
             </label>
             <label>
               Email
-              <input name="email" type="email" />
+              <input name="email" type="email" autoComplete="email" />
             </label>
             <label>
               Дата рождения
               <input name="birthday" type="date" />
             </label>
             <div>
-              <button type="button" onClick={() => setOpen(false)}>
+              <button type="button" disabled={saving} onClick={() => setOpen(false)}>
                 Отмена
               </button>
-              <button className="primary-action">Создать</button>
+              <button className="primary-action" disabled={saving}>{saving?"Создаём…":"Создать"}</button>
             </div>
           </form>
         </div>
@@ -1816,19 +1845,36 @@ type AnalyticsData = {
   }[];
   peakHour: number;
 };
+type AnalyticsSubscription = { plan: string; status: string };
+type ProAnalytics = {
+  currency: string;
+  repeatPurchase: { windows: { days: number; customers: number; repeatCustomers: number; repeatPurchaseRate: number }[]; averageDaysToSecondPurchase: number; secondPurchaseConversion: number };
+  averageCheck: { overall: number; participants: number; anonymous: number; newCustomers: number; repeatCustomers: number };
+  ltv: { type: string; customers: number; totalRevenue: number; average: number; median: number; maximum: number };
+  branches: { id: string; name: string; transactions: number; customers: number; revenue: number; averageCheck: number }[];
+  rfm: { segments: { code: string; name: string; churnRisk: string; customers: number; revenue: number; averageLTV: number }[] };
+};
+type BonusLiability = { currency: string; issued: number; active: number; redeemed: number; expired: number; liability: number; expectedRedemptionCost: number };
 function MetricDelta({ current, previous }: { current: number; previous: number }) {
   const value = previous === 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
   return <small className={value >= 0 ? "metric-delta up" : "metric-delta down"}>{value >= 0 ? "+" : ""}{value.toFixed(0)}% к прошлому периоду</small>;
 }
 export function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const [subscription, setSubscription] = useState<AnalyticsSubscription | null>(null);
+  const [proData, setProData] = useState<ProAnalytics | null>(null);
+  const [liability, setLiability] = useState<BonusLiability | null>(null);
   const [period, setPeriod] = useState("month");
   const [msg, setMsg] = useState("");
   useEffect(() => {
-    api<AnalyticsData>(`/analytics?period=${period}`)
-      .then(setData)
+    setData(null);setMsg("");
+    Promise.all([api<AnalyticsData>(`/analytics?period=${period}`),api<AnalyticsSubscription>("/subscription")])
+      .then(([analytics, plan]) => {setData(analytics);setSubscription(plan);const normalized=plan.plan.toLowerCase()==="business"||plan.plan.toLowerCase()==="growth"?"growth":plan.plan.toLowerCase();if(normalized==="pro")return Promise.all([api<ProAnalytics>("/analytics/business"),api<BonusLiability>("/analytics/bonus-liability")]).then(([business,bonus])=>{setProData(business);setLiability(bonus)});setProData(null);setLiability(null)})
       .catch((e) => setMsg(e.message));
   }, [period]);
+  const tier = subscription?.plan.toLowerCase()==="business"?"growth":subscription?.plan.toLowerCase()||"starter";
+  const tierName = tier==="pro"?"Pro":tier==="growth"?"Growth":"Starter";
+  const money = (value:number) => `${Math.round(value).toLocaleString("ru-RU")} ₸`;
   const max = Math.max(1, ...(data?.series.map((x) => x.visits) || [1]));
   return (
     <SectionShell
@@ -1837,6 +1883,7 @@ export function AnalyticsPage() {
       subtitle="Рост клиентов, посещения и начисления"
     >
       <Notice text={msg} />
+      <section className={`analytics-plan analytics-plan-${tier}`}><div><span>{tier==="pro"?<Crown/>:tier==="growth"?<TrendingUp/>:<BarChart3/>}</span><div><small>АНАЛИТИКА {tierName.toLocaleUpperCase("ru-RU")}</small><h2>{tier==="pro"?"Финансовый центр сети":tier==="growth"?"Центр удержания клиентов":"Пульс программы лояльности"}</h2><p>{tier==="pro"?"Выручка, LTV, повторные покупки и обязательства по бонусам.":tier==="growth"?"Сегменты, риск ухода и конкретные аудитории для возврата.":"Только главные показатели без сложных отчётов."}</p></div></div><Link href="/subscription">{tier==="pro"?"Ваш максимальный тариф":"Сравнить тарифы"}</Link></section>
       <div className="toolbar">
         <span>Данные в реальном времени</span>
         <select value={period} onChange={(e) => setPeriod(e.target.value)}>
@@ -1866,27 +1913,28 @@ export function AnalyticsPage() {
               <strong>{data.audience.new}</strong>
               <MetricDelta current={data.audience.new} previous={data.previous.new} />
             </article>
-            <article>
+            {tier!=="starter"&&<article>
               <Repeat2 />
               <span>Возвращаются</span>
               <strong>{data.audience.retentionRate.toFixed(0)}%</strong>
               <small>
                 {data.audience.returning} клиентов с повторным визитом
               </small>
-            </article>
+            </article>}
             <article>
               <Gift />
               <span>Бонусов выдано</span>
               <strong>{data.totals.pointsIssued}</strong>
               <MetricDelta current={data.totals.pointsIssued} previous={data.previous.pointsIssued} />
             </article>
-            <article className="risk-metric">
+            {tier!=="starter"&&<article className="risk-metric">
               <AlertTriangle />
               <span>Риск ухода</span>
               <strong>{data.audience.atRisk}</strong>
               <small>Не возвращались более 45 дней</small>
-            </article>
+            </article>}
           </div>
+          {tier==="starter"&&<section className="starter-pulse"><div><small>ПУЛЬС ЗА ПЕРИОД</small><strong>{Math.min(100,Math.round(data.audience.retentionRate*.6+Math.min(40,data.audience.active*2)))}</strong><span>из 100</span></div><div><h2>{data.totals.visits?"Программа работает":"Начните собирать визиты"}</h2><p>{data.audience.new>0?`${data.audience.new} новых гостей уже в базе. Следующая цель — вернуть их повторно.`:"Активируйте NFC/QR и зарегистрируйте первых гостей."}</p><Link href={data.totals.visits?"/customers":"/devices"}>{data.totals.visits?"Открыть клиентов":"Настроить NFC/QR"}</Link></div></section>}
           <section className="analytics-answer">
             <TrendingUp />
             <div>
@@ -1909,7 +1957,7 @@ export function AnalyticsPage() {
               <small>визита в среднем</small>
             </b>
           </section>
-          <section className="loyalty-economy">
+          {tier!=="starter"&&<section className="loyalty-economy">
             <header>
               <div><span>ЭКОНОМИКА ПРОГРАММЫ</span><h2>Движение бонусов</h2></div>
               <small>Без выдуманной выручки: показываем только реальные операции Tappix</small>
@@ -1920,8 +1968,8 @@ export function AnalyticsPage() {
               <article><span>Баланс у гостей</span><strong>{data.totals.outstanding}</strong><small>доступно сейчас</small></article>
               <article><span>Всего в базе</span><strong>{data.totals.customers}</strong><small>зарегистрированных гостей</small></article>
             </div>
-          </section>
-          <div className="analytics-business-grid">
+          </section>}
+          {tier!=="starter"&&<div className="analytics-business-grid">
             <section className="analytics-segments">
               <header>
                 <div>
@@ -1984,7 +2032,9 @@ export function AnalyticsPage() {
                 </Link>
               ))}
             </section>
-          </div>
+          </div>}
+          {tier==="growth"&&<section className="growth-actions"><header><small>УНИКАЛЬНО ДЛЯ GROWTH</small><h2>Готовые аудитории для роста</h2><p>Не просто цифры — группы клиентов, с которыми можно работать прямо сейчас.</p></header><div><Link href="/customers"><span><UserX/></span><strong>{data.audience.atRisk} нужно вернуть</strong><small>Не были более 45 дней</small></Link><Link href="/campaigns"><span><UserCheck/></span><strong>{data.audience.new} новых гостей</strong><small>Помогите совершить второй визит</small></Link><Link href="/customers"><span><Star/></span><strong>{data.audience.loyal} постоянных</strong><small>Предложите VIP-награду</small></Link></div></section>}
+          {tier==="pro"&&proData&&liability&&<section className="pro-intelligence"><header><div><small>УНИКАЛЬНО ДЛЯ PRO</small><h2>Экономика лояльности</h2><p>Метрики строятся по реальным закрытым чекам из POS.</p></div><Crown/></header><div className="pro-finance-grid"><article><Banknote/><span>Выручка участников</span><strong>{money(proData.ltv.totalRevenue)}</strong><small>{proData.ltv.customers} покупателей</small></article><article><TrendingUp/><span>Historical LTV</span><strong>{money(proData.ltv.average)}</strong><small>медиана {money(proData.ltv.median)}</small></article><article><CreditCard/><span>Средний чек</span><strong>{money(proData.averageCheck.overall)}</strong><small>участники {money(proData.averageCheck.participants)}</small></article><article><Repeat2/><span>Repeat purchase 30 дней</span><strong>{(proData.repeatPurchase.windows.find(x=>x.days===30)?.repeatPurchaseRate||0).toFixed(1)}%</strong><small>до второй покупки {proData.repeatPurchase.averageDaysToSecondPurchase.toFixed(1)} дн.</small></article><article className="liability"><Gift/><span>Bonus liability</span><strong>{money(liability.liability)}</strong><small>ожидаемое погашение {money(liability.expectedRedemptionCost)}</small></article></div>{proData.branches.length>0?<div className="pro-branches"><h3>Филиалы по выручке</h3>{proData.branches.slice(0,5).map((branch,index)=><article key={branch.id||branch.name}><b>{index+1}</b><span><strong>{branch.name}</strong><small>{branch.transactions} чеков · средний {money(branch.averageCheck)}</small></span><em>{money(branch.revenue)}</em></article>)}</div>:<div className="pro-empty"><Building2/><div><strong>Подключите POS, чтобы увидеть экономику</strong><small>После импорта чеков появятся LTV, средний чек, repeat purchase и рейтинг филиалов.</small></div><Link href="/integrations">Подключить интеграцию</Link></div>}</section>}
           <div className="analytics-chart">
             <div className="chart-heading">
               <div><BarChart3 /><span><b>Новые и повторные визиты</b><small>Показывает, возвращаются ли гости после первого знакомства</small></span></div>
