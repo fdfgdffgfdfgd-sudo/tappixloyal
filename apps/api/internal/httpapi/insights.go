@@ -99,9 +99,9 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 	_ = a.db.QueryRow(r.Context(), `SELECT coalesce((SELECT extract(hour from created_at)::int FROM visits WHERE company_id=$1 GROUP BY 1 ORDER BY count(*) DESC LIMIT 1),0)`, tenant).Scan(&peakHour)
 	write(w, 200, envelope{Success: true, Data: map[string]any{
 		"period": period, "days": days, "series": series,
-		"totals": map[string]int{"customers": totalCustomers, "visits": periodVisits, "pointsIssued": pointsIssued, "pointsRedeemed": pointsRedeemed, "outstanding": outstanding},
-		"previous": map[string]int{"visits": previousVisits, "active": previousActive, "new": previousNew, "pointsIssued": previousIssued},
-		"audience": map[string]any{"active": active, "returning": returning, "repeatActive": repeatActive, "frequent": frequent, "loyal": loyal, "atRisk": atRisk, "new": newCustomers, "retentionRate": retention, "averageVisits": averageVisits},
+		"totals":       map[string]int{"customers": totalCustomers, "visits": periodVisits, "pointsIssued": pointsIssued, "pointsRedeemed": pointsRedeemed, "outstanding": outstanding},
+		"previous":     map[string]int{"visits": previousVisits, "active": previousActive, "new": previousNew, "pointsIssued": previousIssued},
+		"audience":     map[string]any{"active": active, "returning": returning, "repeatActive": repeatActive, "frequent": frequent, "loyal": loyal, "atRisk": atRisk, "new": newCustomers, "retentionRate": retention, "averageVisits": averageVisits},
 		"topCustomers": top, "peakHour": peakHour,
 	}})
 }

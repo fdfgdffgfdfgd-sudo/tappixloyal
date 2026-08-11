@@ -8,6 +8,24 @@ login=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/js
 token=$(printf '%s' "$login" | jq -r '.data.accessToken')
 test -n "$token"
 
+assert_get_json() {
+	label=$1
+	path=$2
+	filter=$3
+	body="$fixture_dir/response.json"
+	status=$(curl -sS -o "$body" -w '%{http_code}' -H "Authorization: Bearer $token" "$API_URL$path")
+	if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+		printf 'Integration check failed: %s (GET %s) returned HTTP %s\n' "$label" "$path" "$status" >&2
+		cat "$body" >&2
+		return 1
+	fi
+	if ! jq -e "$filter" "$body" >/dev/null; then
+		printf 'Integration check failed: %s (GET %s) returned an unexpected payload\n' "$label" "$path" >&2
+		cat "$body" >&2
+		return 1
+	fi
+}
+
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/auth/sessions" | jq -e '.data | type == "array" and length >= 1' >/dev/null
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/workspaces" | jq -e '.data | type == "array" and any(.current == true and .name == "Dentline")' >/dev/null
 forgot_unknown=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_URL/auth/forgot-password" -H 'Content-Type: application/json' -d '{"email":"missing-account@example.com"}')
@@ -17,9 +35,21 @@ test "$expired_reset" = "410"
 
 unauthorized=$(curl -sS -o /dev/null -w '%{http_code}' "$API_URL/customers")
 test "$unauthorized" = "401"
+canonical_unauthorized=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_URL/integrations/transactions/quote" -H 'Content-Type: application/json' -d '{}')
+test "$canonical_unauthorized" = "401"
 
-curl -fsS -H "Authorization: Bearer $token" "$API_URL/dashboard" | jq -e '.success == true and (.data.latestCustomers | type == "array") and (.data.latestVisits | type == "array") and (.data.onboarding | type == "object") and .data.bonusRedeemed >= 0 and .data.nfcConversion >= 0' >/dev/null
-curl -fsS -H "Authorization: Bearer $token" "$API_URL/campaigns" | jq -e '.data | type == "array"' >/dev/null
+assert_get_json dashboard /dashboard '.success == true and (.data.latestCustomers | type == "array") and (.data.latestVisits | type == "array") and (.data.onboarding | type == "object") and .data.bonusRedeemed >= 0 and .data.nfcConversion >= 0'
+assert_get_json business-analytics /analytics/business '.success == true and (.data.repeatPurchase.windows | length == 3) and (.data.averageCheck.overall >= 0) and (.data.ltv.type == "historical") and (.data.rfm.segments | type == "array") and (.data.branches | type == "array") and (.data.funnel | length == 7)'
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/analytics/refresh" | jq -e '.data.refreshed == true' >/dev/null
+assert_get_json bonus-liability /analytics/bonus-liability '.data.issued >= 0 and .data.liability >= 0 and .data.expectedRedemptionCost >= 0'
+assert_get_json registration-retention '/analytics/retention?cohortType=registration&periods=4' '.data.grain == "month" and .data.periods == 4 and (.data.cohorts | type == "array")'
+assert_get_json purchase-retention '/analytics/retention?cohortType=first_purchase&periods=4' '.data.grain == "week" and (.data.cohorts | type == "array")'
+assert_get_json integration-connections /integration-connections '.data | type == "array"'
+assert_get_json webhook-deliveries /webhook-deliveries '.data | type == "array"'
+assert_get_json campaigns /campaigns '.data | type == "array"'
+assert_get_json campaign-automations /campaign-automations '.data | length == 3 and ([.[].triggerType] | sort) == (["birthday_bonus","bonus_expiry_3d","winback_30d"] | sort)'
+invalid_holdout=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_URL/campaigns" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"name":"Invalid holdout","subject":"Test","body":"Test","segment":"all","holdoutPercent":3}')
+test "$invalid_holdout" = "422"
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/loyalty/inactive?days=30" | jq -e '.data.total >= 0 and (.data.items | type == "array")' >/dev/null
 curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/loyalty/process-birthdays" | jq -e '.data.processed >= 0' >/dev/null
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers" | jq -e '.data.total >= 1' >/dev/null

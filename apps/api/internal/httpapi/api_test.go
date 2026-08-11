@@ -51,6 +51,30 @@ func TestDecodeRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestPercentage(t *testing.T) {
+	if got := percentage(2, 5); got != 40 {
+		t.Fatalf("percentage(2, 5) = %v, want 40", got)
+	}
+	if got := percentage(1, 0); got != 0 {
+		t.Fatalf("percentage with zero total = %v, want 0", got)
+	}
+}
+
+func TestIntegrationSecretEncryption(t *testing.T) {
+	key := integrationEncryptionKey("unit-test")
+	ciphertext, err := encryptIntegrationSecret(key, []byte("webhook-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plaintext, err := decryptIntegrationSecret(key, ciphertext)
+	if err != nil || string(plaintext) != "webhook-secret" {
+		t.Fatalf("integration secret round trip failed: plaintext=%q err=%v", plaintext, err)
+	}
+	if string(ciphertext) == "webhook-secret" {
+		t.Fatal("secret was stored as plaintext")
+	}
+}
+
 func TestHelpers(t *testing.T) {
 	if clamp(-1, 1, 100) != 1 || clamp(101, 1, 100) != 100 || clamp(50, 1, 100) != 50 {
 		t.Fatal("clamp returned an invalid value")
@@ -60,5 +84,22 @@ func TestHelpers(t *testing.T) {
 	}
 	if fromAddress("Tappix <noreply@tappix.kz>") != "noreply@tappix.kz" {
 		t.Fatal("SMTP from address parsing is incorrect")
+	}
+}
+
+func TestCampaignHoldoutIsDeterministicAndOptional(t *testing.T) {
+	first := campaignHoldout("seed", "customer-42", 10)
+	if campaignHoldout("seed", "customer-42", 10) != first {
+		t.Fatal("holdout assignment must be deterministic")
+	}
+	if campaignHoldout("seed", "customer-42", 0) {
+		t.Fatal("zero-percent holdout must not exclude customers")
+	}
+}
+
+func TestPosterWebhookFieldExtraction(t *testing.T) {
+	payload := map[string]any{"event": "transaction.returned", "data": map[string]any{"transaction_id": json.Number("321")}}
+	if posterString(payload, "event", "type") != "transaction.returned" || posterString(payload, "transaction_id") != "321" {
+		t.Fatal("Poster webhook aliases were not normalized")
 	}
 }

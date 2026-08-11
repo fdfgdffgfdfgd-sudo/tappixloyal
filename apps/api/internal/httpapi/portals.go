@@ -8,20 +8,22 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	posintegration "github.com/tappix/platform/apps/api/internal/integration"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type customerRegisterInput struct {
-	Token     string `json:"token"`
-	FirstName string `json:"firstName"`
-	LastName  string `json:"lastName"`
-	Phone     string `json:"phone"`
-	Birthday  string `json:"birthday"`
-	Gender    string `json:"gender"`
-	Email     string `json:"email"`
-	City      string `json:"city"`
-	Consent   bool   `json:"consent"`
-	PIN       string `json:"pin"`
+	Token        string `json:"token"`
+	FirstName    string `json:"firstName"`
+	LastName     string `json:"lastName"`
+	Phone        string `json:"phone"`
+	Birthday     string `json:"birthday"`
+	Gender       string `json:"gender"`
+	Email        string `json:"email"`
+	City         string `json:"city"`
+	Consent      bool   `json:"consent"`
+	PIN          string `json:"pin"`
+	ReferralCode string `json:"referralCode"`
 }
 type customerLoginInput struct {
 	Company string `json:"company"`
@@ -80,10 +82,30 @@ func (a *api) customerRegister(w http.ResponseWriter, r *http.Request) {
 		err = tx.QueryRow(r.Context(), `INSERT INTO customers(company_id,first_name,last_name,phone,birthday,gender,email,city,pin_hash,total_points) VALUES($1,$2,$3,$4,$5,nullif($6,''),nullif($7,''),nullif($8,''),$9,$10) RETURNING id`, company, strings.TrimSpace(in.FirstName), strings.TrimSpace(in.LastName), in.Phone, birthday, strings.TrimSpace(in.Gender), strings.TrimSpace(in.Email), strings.TrimSpace(in.City), string(hash), welcome).Scan(&id)
 		points = welcome
 		if err == nil && welcome > 0 {
-			_, err = tx.Exec(r.Context(), `INSERT INTO bonus_ledger(company_id,customer_id,operation,amount,balance_after,description) VALUES($1,$2,'credit',$3,$3,'Приветственный бонус')`, company, id, welcome)
+			var ledgerID string
+			err = tx.QueryRow(r.Context(), `INSERT INTO bonus_ledger(company_id,customer_id,operation,amount,balance_after,description) VALUES($1,$2,'credit',$3,$3,'Приветственный бонус') RETURNING id`, company, id, welcome).Scan(&ledgerID)
+			if err == nil {
+				err = posintegration.IssueBonusLot(r.Context(), tx, company, id, ledgerID, "", welcome)
+			}
 		}
 	} else if err == nil {
 		_, err = tx.Exec(r.Context(), `UPDATE customers SET pin_hash=$3,first_name=$4,last_name=$5,birthday=coalesce($6,birthday),gender=coalesce(nullif($7,''),gender),email=coalesce(nullif($8,''),email),city=coalesce(nullif($9,''),city),updated_at=now() WHERE company_id=$1 AND id=$2`, company, id, string(hash), strings.TrimSpace(in.FirstName), strings.TrimSpace(in.LastName), birthday, strings.TrimSpace(in.Gender), strings.TrimSpace(in.Email), strings.TrimSpace(in.City))
+	}
+	if err == nil && created && strings.TrimSpace(in.ReferralCode) != "" {
+		code := strings.ToUpper(strings.TrimSpace(in.ReferralCode))
+		var attributionID string
+		err = tx.QueryRow(r.Context(), `SELECT a.id FROM referral_attributions a JOIN referral_programs p ON p.id=a.program_id AND p.company_id=a.company_id AND p.status='active'
+			WHERE a.company_id=$1 AND a.referral_code=$2 AND a.referred_customer_id IS NULL AND a.status='clicked' ORDER BY a.clicked_at DESC LIMIT 1 FOR UPDATE`, company, code).Scan(&attributionID)
+		if err == nil {
+			_, err = tx.Exec(r.Context(), `UPDATE referral_attributions SET referred_customer_id=$3,status='registered',registered_at=now(),updated_at=now() WHERE company_id=$1 AND id=$2 AND referrer_customer_id<>$3`, company, attributionID, id)
+		} else if errors.Is(err, pgx.ErrNoRows) {
+			err = tx.QueryRow(r.Context(), `INSERT INTO referral_attributions(company_id,program_id,referrer_customer_id,referred_customer_id,referral_code,status,registered_at,source)
+				SELECT c.company_id,p.id,c.id,$3,c.referral_code,'registered',now(),'direct' FROM customers c JOIN referral_programs p ON p.company_id=c.company_id AND p.status='active'
+				WHERE c.company_id=$1 AND c.referral_code=$2 AND c.id<>$3 RETURNING id`, company, code, id).Scan(&attributionID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				err = nil
+			}
+		}
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "REGISTRATION_FAILED", "Не удалось зарегистрироваться")

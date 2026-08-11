@@ -4,7 +4,10 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+
+	posintegration "github.com/tappix/platform/apps/api/internal/integration"
 )
 
 func levelProgress(points int) map[string]any {
@@ -81,7 +84,11 @@ func (a *api) customerWheelSpin(w http.ResponseWriter, r *http.Request) {
 	if prize.Value > 0 {
 		err = tx.QueryRow(r.Context(), `UPDATE customers SET total_points=total_points+$3,updated_at=now() WHERE company_id=$1 AND id=$2 RETURNING total_points`, claims.CompanyID, claims.Subject, prize.Value).Scan(&balance)
 		if err == nil {
-			_, err = tx.Exec(r.Context(), `INSERT INTO bonus_ledger(company_id,customer_id,operation,amount,balance_after,description) VALUES($1,$2,'credit',$3,$4,'Приз: счастливое колесо')`, claims.CompanyID, claims.Subject, prize.Value, balance)
+			var ledgerID string
+			err = tx.QueryRow(r.Context(), `INSERT INTO bonus_ledger(company_id,customer_id,operation,amount,balance_after,description) VALUES($1,$2,'credit',$3,$4,'Приз: счастливое колесо') RETURNING id`, claims.CompanyID, claims.Subject, prize.Value, balance).Scan(&ledgerID)
+			if err == nil {
+				err = posintegration.IssueBonusLot(r.Context(), tx, claims.CompanyID, claims.Subject, ledgerID, "", prize.Value)
+			}
 		}
 	}
 	if err == nil {
@@ -95,11 +102,19 @@ func (a *api) customerWheelSpin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) publicReferral(w http.ResponseWriter, r *http.Request) {
-	var token, company string
-	err := a.db.QueryRow(r.Context(), `SELECT d.token,co.name FROM customers c JOIN companies co ON co.id=c.company_id AND co.status='active' JOIN LATERAL (SELECT token FROM devices WHERE company_id=c.company_id AND is_active AND destination='join' ORDER BY created_at LIMIT 1) d ON true WHERE c.referral_code=$1 AND c.deleted_at IS NULL`, r.PathValue("code")).Scan(&token, &company)
+	var token, company, companyID, customerID, programID string
+	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	err := a.db.QueryRow(r.Context(), `SELECT d.token,co.name,c.company_id,c.id,p.id FROM customers c JOIN companies co ON co.id=c.company_id AND co.status='active' JOIN referral_programs p ON p.company_id=c.company_id AND p.status='active' JOIN LATERAL (SELECT token FROM devices WHERE company_id=c.company_id AND is_active AND destination='join' ORDER BY created_at LIMIT 1) d ON true WHERE c.referral_code=$1 AND c.deleted_at IS NULL`, code).Scan(&token, &company, &companyID, &customerID, &programID)
 	if err != nil {
 		fail(w, 404, "REFERRAL_NOT_FOUND", "Приглашение недействительно")
 		return
 	}
-	write(w, 200, envelope{Success: true, Data: map[string]string{"token": token, "company": company, "referralCode": r.PathValue("code")}})
+	anonymousID := truncate(strings.TrimSpace(r.URL.Query().Get("anonymousId")), 160)
+	if anonymousID != "" {
+		_, _ = a.db.Exec(r.Context(), `INSERT INTO referral_attributions(company_id,program_id,referrer_customer_id,referral_code,anonymous_id,source,metadata)
+			SELECT $1,$2,$3,$4,$5,'share_link',jsonb_build_object('userAgent',$6) WHERE NOT EXISTS(SELECT 1 FROM referral_attributions WHERE company_id=$1 AND program_id=$2 AND referral_code=$4 AND anonymous_id=$5)`, companyID, programID, customerID, code, anonymousID, truncate(r.UserAgent(), 240))
+	} else {
+		_, _ = a.db.Exec(r.Context(), `INSERT INTO referral_attributions(company_id,program_id,referrer_customer_id,referral_code,source,metadata) VALUES($1,$2,$3,$4,'share_link',jsonb_build_object('userAgent',$5))`, companyID, programID, customerID, code, truncate(r.UserAgent(), 240))
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]string{"token": token, "company": company, "referralCode": code}})
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	posintegration "github.com/tappix/platform/apps/api/internal/integration"
 )
 
 type customerUpdateInput struct {
@@ -137,7 +138,14 @@ func (a *api) customerBonus(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = tx.Exec(r.Context(), `UPDATE customers SET total_points=$3,updated_at=now() WHERE company_id=$1 AND id=$2`, tenant, r.PathValue("id"), next)
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `INSERT INTO bonus_ledger(company_id,customer_id,created_by,operation,amount,balance_after,description) VALUES($1,$2,$3,$4,$5,$6,$7)`, tenant, r.PathValue("id"), claims.Subject, in.Operation, in.Amount, next, in.Description)
+		var ledgerID string
+		err = tx.QueryRow(r.Context(), `INSERT INTO bonus_ledger(company_id,customer_id,created_by,operation,amount,balance_after,description) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, tenant, r.PathValue("id"), claims.Subject, in.Operation, in.Amount, next, in.Description).Scan(&ledgerID)
+		if err == nil && in.Operation == "credit" {
+			err = posintegration.IssueBonusLot(r.Context(), tx, tenant, r.PathValue("id"), ledgerID, "", in.Amount)
+		}
+		if err == nil && in.Operation == "debit" {
+			err = posintegration.ConsumeBonusLots(r.Context(), tx, tenant, r.PathValue("id"), ledgerID, "", in.Amount)
+		}
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "BONUS_FAILED", "Не удалось выполнить бонусную операцию")

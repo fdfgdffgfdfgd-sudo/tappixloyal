@@ -7,7 +7,7 @@ INSERT INTO branches (id, company_id, name, address) VALUES
 ON CONFLICT DO NOTHING;
 
 INSERT INTO company_modules(company_id,module_code,enabled)
-SELECT '10000000-0000-0000-0000-000000000001', code, code IN ('core','crm','loyalty','analytics','reviews') FROM modules
+SELECT '10000000-0000-0000-0000-000000000001', code, code IN ('core','crm','loyalty','analytics','reviews','email') FROM modules
 ON CONFLICT (company_id,module_code) DO UPDATE SET enabled=excluded.enabled;
 
 INSERT INTO customers (company_id,first_name,last_name,phone,total_points,total_visits,level,created_at) VALUES

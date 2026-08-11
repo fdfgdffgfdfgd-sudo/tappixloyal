@@ -72,6 +72,101 @@ paths:
     get: {summary: Current subscription, responses: {'200': {$ref: '#/components/responses/Success'}}}
   /analytics:
     get: {summary: Tenant analytics, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /analytics/business:
+    get:
+      summary: Revenue, repeat purchase, historical LTV, RFM, churn and customer journey analytics
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '500': {$ref: '#/components/responses/Error'}
+  /analytics/refresh:
+    post:
+      summary: Force rebuilding daily and per-customer analytics projections
+      responses: {'202': {$ref: '#/components/responses/Success'}, '500': {$ref: '#/components/responses/Error'}}
+  /analytics/bonus-liability:
+    get:
+      summary: FIFO bonus issuance, redemption, expiry and financial liability metrics
+      responses: {'200': {$ref: '#/components/responses/Success'}, '500': {$ref: '#/components/responses/Error'}}
+  /analytics/retention:
+    get:
+      summary: Registration M0-Mn or first-purchase W0-Wn retention cohorts with attribution filters
+      responses: {'200': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /loyalty/expire-bonuses:
+    post:
+      summary: Force expiration of due bonus lots
+      responses: {'200': {$ref: '#/components/responses/Success'}, '500': {$ref: '#/components/responses/Error'}}
+  /integration-connections:
+    get:
+      summary: List POS and external system connections
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+    post:
+      summary: Create an encrypted integration connection
+      responses: {'201': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /integration-connections/{id}/inbound-webhook:
+    post:
+      summary: Create an HMAC-signed inbound webhook for a connection
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'201': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}}
+  /integration-connections/{id}/sync:
+    post:
+      summary: Queue Poster locations, customers and 90-day transaction imports
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'202': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /integration-connections/{id}/sync-status:
+    get:
+      summary: Get connection and recent synchronization job status
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}}
+  /integration-connections/{id}/location-mappings:
+    get:
+      summary: List imported POS locations and their Tappix branch mapping
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+  /integration-connections/{id}/location-mappings/{mappingId}:
+    patch:
+      summary: Map an imported POS location to a tenant branch
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /webhook-endpoints:
+    post:
+      summary: Create an HMAC-signed outbound webhook endpoint
+      responses: {'201': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /webhook-deliveries:
+    get:
+      summary: List inbound and outbound webhook deliveries
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+  /integrations/transactions/quote:
+    post:
+      security: [{apiKeyAuth: []}]
+      summary: Calculate loyalty effects without mutating balance or visits
+      responses: {'200': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /integrations/poster/{key}:
+    post:
+      security: []
+      summary: Accept a secret-bound Poster event and queue authoritative transaction retrieval
+      responses: {'202': {$ref: '#/components/responses/Success'}, '401': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /integrations/transactions:
+    post:
+      security: [{apiKeyAuth: []}]
+      summary: Atomically register a completed canonical POS receipt
+      responses: {'201': {$ref: '#/components/responses/Success'}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /integrations/transactions/{id}:
+    get:
+      security: [{apiKeyAuth: []}]
+      summary: Get canonical receipt status, items and payments
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}}
+  /integrations/transactions/{id}/refund:
+    post:
+      security: [{apiKeyAuth: []}]
+      summary: Register a full or partial receipt refund and reverse loyalty effects
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'201': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /integration-jobs/{id}/retry:
+    post:
+      security: [{apiKeyAuth: []}]
+      summary: Retry a failed or dead integration job
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'202': {$ref: '#/components/responses/Success'}, '409': {$ref: '#/components/responses/Error'}}
   /audit:
     get: {summary: Audit trail, responses: {'200': {$ref: '#/components/responses/Success'}}}
   /notifications/send:
@@ -84,6 +179,50 @@ paths:
       summary: Create an email campaign draft
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CampaignInput'}}}}
       responses: {'201': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /campaigns/{id}/analytics:
+    get:
+      summary: Campaign delivery, attribution, holdout uplift, costs and ROI
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}}
+  /campaigns/{id}/events:
+    post:
+      summary: Idempotently record delivered, opened, clicked or redeemed campaign conversion
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'202': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /campaign-automations:
+    get:
+      summary: List birthday bonus, three-day expiry reminder and 30-day win-back automations
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+  /campaign-automations/{id}:
+    patch:
+      summary: Configure and enable or disable a trigger automation
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /campaign-automations/run:
+    post:
+      summary: Force idempotent processing of due campaign automations
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+  /partnerships:
+    get:
+      summary: List cross-marketing partnerships visible to the current business
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+    post:
+      summary: Invite another business to a partnership
+      responses: {'201': {$ref: '#/components/responses/Success'}, '409': {$ref: '#/components/responses/Error'}}
+  /partnerships/{id}/approve:
+    post:
+      summary: Accept a partnership invitation as the invited business
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'200': {$ref: '#/components/responses/Success'}}
+  /partnerships/{id}/offers:
+    post:
+      summary: Create a directional shared promo code between active partners
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses: {'201': {$ref: '#/components/responses/Success'}, '409': {$ref: '#/components/responses/Error'}}
+  /partnership-offers/redeem:
+    post:
+      summary: Qualify a source receipt and issue FIFO bonus points in the partner tenant
+      responses: {'201': {$ref: '#/components/responses/Success'}, '409': {$ref: '#/components/responses/Error'}}
   /campaigns/{id}/preview:
     get:
       summary: Preview the current campaign audience
@@ -108,6 +247,7 @@ paths:
 components:
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+    apiKeyAuth: {type: apiKey, in: header, name: X-Tappix-API-Key}
   parameters:
     Id: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
   schemas:

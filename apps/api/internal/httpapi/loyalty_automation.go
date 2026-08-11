@@ -6,14 +6,21 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/smtp"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	posintegration "github.com/tappix/platform/apps/api/internal/integration"
 )
 
 func StartAutomation(ctx context.Context, db *pgxpool.Pool) {
-	run := func() { _, _ = processBirthdayBonuses(ctx, db, "") }
+	run := func() {
+		_, _ = processBirthdayBonuses(ctx, db, "")
+		_, _ = processCampaignAutomations(ctx, db, "")
+		_, _ = processReferralRewards(ctx, db, "")
+	}
 	go func() {
 		run()
 		ticker := time.NewTicker(time.Hour)
@@ -29,8 +36,64 @@ func StartAutomation(ctx context.Context, db *pgxpool.Pool) {
 	}()
 }
 
+func processReferralRewards(ctx context.Context, db *pgxpool.Pool, onlyCompany string) (int, error) {
+	rows, err := db.Query(ctx, `SELECT id,company_id,attribution_id,beneficiary_customer_id,reward_value::integer,idempotency_key FROM referral_rewards
+		WHERE status='pending' AND available_at<=now() AND ($1='' OR company_id::text=$1) ORDER BY available_at LIMIT 200`, onlyCompany)
+	if err != nil {
+		return 0, err
+	}
+	type candidate struct {
+		id, company, attribution, customer, key string
+		amount                                  int
+	}
+	items := []candidate{}
+	for rows.Next() {
+		var x candidate
+		if rows.Scan(&x.id, &x.company, &x.attribution, &x.customer, &x.amount, &x.key) == nil {
+			items = append(items, x)
+		}
+	}
+	rows.Close()
+	issued := 0
+	for _, x := range items {
+		tx, beginErr := db.Begin(ctx)
+		if beginErr != nil {
+			continue
+		}
+		var balance int
+		err = tx.QueryRow(ctx, `SELECT total_points FROM customers WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, x.company, x.customer).Scan(&balance)
+		if err == nil {
+			var ledgerID string
+			newLedger := false
+			err = tx.QueryRow(ctx, `INSERT INTO bonus_ledger(company_id,customer_id,operation,amount,balance_after,description,idempotency_key)
+				VALUES($1,$2,'credit',$3,$4,'Награда за рекомендацию',$5) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING RETURNING id`, x.company, x.customer, x.amount, balance+x.amount, x.key).Scan(&ledgerID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				err = nil
+			} else if err == nil {
+				newLedger = true
+				err = posintegration.IssueBonusLot(ctx, tx, x.company, x.customer, ledgerID, "", x.amount)
+			}
+			if err == nil && newLedger {
+				_, err = tx.Exec(ctx, `UPDATE customers SET total_points=total_points+$3,updated_at=now() WHERE company_id=$1 AND id=$2`, x.company, x.customer, x.amount)
+			}
+			if err == nil {
+				_, err = tx.Exec(ctx, `UPDATE referral_rewards SET status='issued',issued_at=now(),bonus_ledger_id=nullif($3,'')::uuid WHERE company_id=$1 AND id=$2`, x.company, x.id, ledgerID)
+			}
+			if err == nil {
+				_, err = tx.Exec(ctx, `UPDATE referral_attributions SET status='rewarded',updated_at=now() WHERE company_id=$1 AND id=$2 AND NOT EXISTS(SELECT 1 FROM referral_rewards WHERE attribution_id=$2 AND status='pending')`, x.company, x.attribution)
+			}
+		}
+		if err == nil && tx.Commit(ctx) == nil {
+			issued++
+		} else {
+			_ = tx.Rollback(ctx)
+		}
+	}
+	return issued, nil
+}
+
 func processBirthdayBonuses(ctx context.Context, db *pgxpool.Pool, onlyCompany string) (int, error) {
-	query := `SELECT c.id,c.company_id,coalesce((lr.actions->>'amount')::integer,0) FROM customers c JOIN companies co ON co.id=c.company_id AND co.status='active' JOIN loyalty_rules lr ON lr.company_id=c.company_id AND lr.event_type='customer_birthday' AND lr.is_active WHERE c.deleted_at IS NULL AND c.birthday IS NOT NULL AND extract(month from c.birthday)=extract(month from current_date) AND extract(day from c.birthday)=extract(day from current_date) AND ($1='' OR c.company_id::text=$1)`
+	query := `SELECT c.id,c.company_id,coalesce((lr.actions->>'amount')::integer,(ca.settings->>'bonusAmount')::integer,0) FROM customers c JOIN companies co ON co.id=c.company_id AND co.status='active' JOIN campaign_automations ca ON ca.company_id=c.company_id AND ca.trigger_type='birthday_bonus' AND ca.is_active LEFT JOIN loyalty_rules lr ON lr.company_id=c.company_id AND lr.event_type='customer_birthday' AND lr.is_active WHERE c.deleted_at IS NULL AND c.birthday IS NOT NULL AND extract(month from c.birthday)=extract(month from current_date) AND extract(day from c.birthday)=extract(day from current_date) AND ($1='' OR c.company_id::text=$1)`
 	rows, err := db.Query(ctx, query, onlyCompany)
 	if err != nil {
 		return 0, err
@@ -70,13 +133,82 @@ func processBirthdayBonuses(ctx context.Context, db *pgxpool.Pool, onlyCompany s
 		var balance int
 		e = tx.QueryRow(ctx, `UPDATE customers SET total_points=total_points+$3,updated_at=now() WHERE company_id=$1 AND id=$2 RETURNING total_points`, x.company, x.id, x.amount).Scan(&balance)
 		if e == nil {
-			_, e = tx.Exec(ctx, `INSERT INTO bonus_ledger(company_id,customer_id,operation,amount,balance_after,description,idempotency_key) VALUES($1,$2,'credit',$3,$4,'Бонус на день рождения',$5)`, x.company, x.id, x.amount, balance, key)
+			var ledgerID string
+			e = tx.QueryRow(ctx, `INSERT INTO bonus_ledger(company_id,customer_id,operation,amount,balance_after,description,idempotency_key) VALUES($1,$2,'credit',$3,$4,'Бонус на день рождения',$5) RETURNING id`, x.company, x.id, x.amount, balance, key).Scan(&ledgerID)
+			if e == nil {
+				e = posintegration.IssueBonusLot(ctx, tx, x.company, x.id, ledgerID, "", x.amount)
+			}
 		}
 		if e == nil && tx.Commit(ctx) == nil {
 			processed++
 		} else {
 			slog.Warn("birthday automation credit failed", "customer", x.id, "error", e)
 			_ = tx.Rollback(ctx)
+		}
+	}
+	return processed, nil
+}
+
+type automationCandidate struct {
+	automationID, companyID, customerID, triggerType, triggerKey string
+	name, email, channel, subject, message                       string
+	amount                                                       int
+}
+
+func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompany string) (int, error) {
+	rows, err := db.Query(ctx, `WITH last_activity AS (
+		SELECT c.id customer_id,c.company_id,greatest(coalesce(max(t.occurred_at),c.created_at),coalesce(max(v.created_at),c.created_at)) last_at
+		FROM customers c LEFT JOIN sales_transactions t ON t.company_id=c.company_id AND t.customer_id=c.id AND t.original_transaction_id IS NULL AND t.status IN('completed','partially_refunded','refunded') AND NOT t.sandbox
+		LEFT JOIN visits v ON v.company_id=c.company_id AND v.customer_id=c.id AND v.reversed_at IS NULL WHERE c.deleted_at IS NULL GROUP BY c.id
+	), candidates AS (
+		SELECT a.id automation_id,a.company_id,c.id customer_id,a.trigger_type,'automation:birthday:'||c.id||':'||extract(year from current_date)::integer trigger_key,c.first_name,c.email,a.channel,a.subject,a.message,coalesce((a.settings->>'bonusAmount')::integer,0) amount
+		FROM campaign_automations a JOIN customers c ON c.company_id=a.company_id AND c.deleted_at IS NULL
+		WHERE a.is_active AND a.trigger_type='birthday_bonus' AND c.birthday IS NOT NULL AND extract(month from c.birthday)=extract(month from current_date) AND extract(day from c.birthday)=extract(day from current_date)
+		UNION ALL
+		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:expiry:'||c.id||':'||current_date,c.first_name,c.email,a.channel,a.subject,a.message,sum(l.remaining_amount)::integer
+		FROM campaign_automations a JOIN customers c ON c.company_id=a.company_id AND c.deleted_at IS NULL JOIN bonus_lots l ON l.company_id=c.company_id AND l.customer_id=c.id
+		WHERE a.is_active AND a.trigger_type='bonus_expiry_3d' AND l.status IN('pending','active') AND l.remaining_amount>0 AND l.expires_at::date=current_date+coalesce((a.settings->>'daysBefore')::integer,3)
+		GROUP BY a.id,c.id
+		UNION ALL
+		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:winback:'||c.id||':'||la.last_at::date,c.first_name,c.email,a.channel,a.subject,a.message,0
+		FROM campaign_automations a JOIN customers c ON c.company_id=a.company_id AND c.deleted_at IS NULL JOIN last_activity la ON la.company_id=c.company_id AND la.customer_id=c.id
+		WHERE a.is_active AND a.trigger_type='winback_30d' AND la.last_at<=now()-make_interval(days=>coalesce((a.settings->>'inactiveDays')::integer,30))
+	) SELECT automation_id,company_id,customer_id,trigger_type,trigger_key,first_name,coalesce(email,''),channel,subject,message,amount FROM candidates WHERE ($1='' OR company_id::text=$1)`, onlyCompany)
+	if err != nil {
+		return 0, err
+	}
+	items := []automationCandidate{}
+	for rows.Next() {
+		var item automationCandidate
+		if rows.Scan(&item.automationID, &item.companyID, &item.customerID, &item.triggerType, &item.triggerKey, &item.name, &item.email, &item.channel, &item.subject, &item.message, &item.amount) == nil {
+			items = append(items, item)
+		}
+	}
+	rows.Close()
+	processed := 0
+	for _, item := range items {
+		status, errorText := "sent", ""
+		message := strings.ReplaceAll(strings.ReplaceAll(item.message, "{{name}}", item.name), "{{amount}}", fmt.Sprintf("%d", item.amount))
+		var runID string
+		err = db.QueryRow(ctx, `INSERT INTO campaign_automation_runs(company_id,automation_id,customer_id,trigger_key,status,channel,recipient,payload)
+			VALUES($1,$2,$3,$4,'pending',$5,nullif($6,''),jsonb_build_object('amount',$7::integer)) ON CONFLICT(company_id,trigger_key) DO NOTHING RETURNING id`, item.companyID, item.automationID, item.customerID, item.triggerKey, item.channel, item.email, item.amount).Scan(&runID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return processed, err
+		}
+		if item.channel != "email" || item.email == "" {
+			status, errorText = "skipped", "Канал недоступен или у клиента нет email"
+		} else if sendErr := smtp.SendMail(envValue("SMTP_HOST", "mailpit")+":"+envValue("SMTP_PORT", "1025"), nil, fromAddress(envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>")), []string{item.email}, []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s", envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>"), item.email, item.subject, message))); sendErr != nil {
+			status, errorText = "failed", sendErr.Error()
+		}
+		_, err = db.Exec(ctx, `UPDATE campaign_automation_runs SET status=$2,error=nullif($3,''),sent_at=CASE WHEN $2='sent' THEN now() ELSE NULL END WHERE id=$1`, runID, status, errorText)
+		if err != nil {
+			return processed, err
+		}
+		if status == "sent" {
+			processed++
 		}
 	}
 	return processed, nil

@@ -1,6 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Camera, CameraOff, CheckCircle2, Keyboard, LoaderCircle, RotateCcw, ScanLine, ShieldCheck, UserRound } from "lucide-react";
+import { AlertTriangle, Camera, CameraOff, CheckCircle2, Keyboard, LoaderCircle, RotateCcw, ScanLine, ShieldCheck, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 
@@ -17,15 +17,17 @@ function customerID(raw:string){
 }
 
 export function StaffScanner(){
-  const [branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState(""),[customer,setCustomer]=useState<Customer|null>(null),[message,setMessage]=useState(""),[scanning,setScanning]=useState(false),[saving,setSaving]=useState(false),[success,setSuccess]=useState<VisitResult|null>(null);
+  const [branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState(""),[customer,setCustomer]=useState<Customer|null>(null),[message,setMessage]=useState(""),[scanning,setScanning]=useState(false),[saving,setSaving]=useState(false),[resolving,setResolving]=useState(false),[branchesLoading,setBranchesLoading]=useState(true),[success,setSuccess]=useState<VisitResult|null>(null);
   const scanner=useRef<{stop:()=>Promise<void>;clear:()=>void}|null>(null);
-  useEffect(()=>{api<Branch[]>("/branches").then(items=>{const active=items.filter(x=>x.isActive);setBranches(active);setBranchId(active[0]?.id||"")}).catch(e=>setMessage(e.message));return()=>{void scanner.current?.stop().catch(()=>undefined)}},[]);
+  const resolvingLock=useRef(false),manualInput=useRef<HTMLInputElement>(null);
+  useEffect(()=>{api<Branch[]>("/branches").then(items=>{const active=items.filter(x=>x.isActive);setBranches(active);setBranchId(active[0]?.id||"");if(!active.length)setMessage("Нет активного филиала. Попросите владельца включить филиал в настройках.")}).catch(e=>setMessage(e.message)).finally(()=>setBranchesLoading(false));return()=>{void scanner.current?.stop().catch(()=>undefined)}},[]);
   async function stop(){if(scanner.current){await scanner.current.stop().catch(()=>undefined);scanner.current.clear();scanner.current=null}setScanning(false)}
   async function resolve(raw:string){
+    if(resolvingLock.current)return;resolvingLock.current=true;setResolving(true);
     const id=customerID(raw);
-    if(!id){setMessage("Это не QR-код клиента Tappix");return}
+    if(!id){setMessage("Это не QR-код клиента Tappix. Откройте QR на бонусной карте и попробуйте снова.");resolvingLock.current=false;setResolving(false);return}
     await stop();setMessage("");setSuccess(null);
-    try{setCustomer(await api<Customer>(`/customers/${id}`))}catch(e){setMessage(e instanceof Error?e.message:"Клиент не найден")}
+    try{setCustomer(await api<Customer>(`/customers/${id}`))}catch(e){setMessage(e instanceof Error?e.message:"Клиент не найден")}finally{resolvingLock.current=false;setResolving(false)}
   }
   async function start(){
     setMessage("");setCustomer(null);setSuccess(null);
@@ -39,27 +41,28 @@ export function StaffScanner(){
     if(!customer||!branchId)return;setSaving(true);setMessage("");
     try{const result=await api<VisitResult>("/visits",{method:"POST",body:JSON.stringify({customerId:customer.id,branchId,comment:"QR Scanner"})});setSuccess(result);setCustomer({...customer,totalVisits:result.totalVisits,totalPoints:result.balance})}catch(e){setMessage(e instanceof Error?e.message:"Не удалось отметить посещение")}finally{setSaving(false)}
   }
-  function reset(){setCustomer(null);setSuccess(null);setMessage("")}
+  function reset(){setCustomer(null);setSuccess(null);setMessage(branches.length?"":"Нет активного филиала. Попросите владельца включить филиал в настройках.");requestAnimationFrame(()=>manualInput.current?.focus())}
   function manual(e:FormEvent<HTMLFormElement>){e.preventDefault();const value=String(new FormData(e.currentTarget).get("code")||"");void resolve(value)}
   return <SectionShell active="/scanner" title="Сканер гостя" subtitle="Отметьте посещение за несколько секунд">
+    <ol className="scanner-steps" aria-label="Этапы отметки посещения"><li className={!customer?"current":"done"}><span>1</span>Сканирование</li><li className={customer&&!success?"current":success?"done":""}><span>2</span>Проверка гостя</li><li className={success?"current":""}><span>3</span>Готово</li></ol>
     <div className="scanner-layout">
       <section className="scanner-main">
         <div className="scanner-camera">
           <div id="staff-reader" className={scanning?"active":""}/>
-          {!scanning&&<div className="scanner-placeholder"><span><ScanLine/></span><h2>Наведите камеру на QR гостя</h2><p>QR находится на цифровой бонусной карте клиента.</p><button onClick={()=>void start()}><Camera/>Включить камеру</button></div>}
-          {scanning&&<button className="stop-camera" onClick={()=>void stop()}><CameraOff/>Остановить</button>}
+          {!scanning&&<div className="scanner-placeholder"><span>{resolving?<LoaderCircle className="spin"/>:<ScanLine/>}</span><h2>{resolving?"Проверяем карту…":"Наведите камеру на QR гостя"}</h2><p>{resolving?"Находим клиента и его актуальный баланс.":"QR находится на цифровой бонусной карте клиента."}</p><button type="button" disabled={resolving||branchesLoading||!branches.length} onClick={()=>void start()}><Camera/>Включить камеру</button></div>}
+          {scanning&&<button type="button" className="stop-camera" onClick={()=>void stop()}><CameraOff/>Остановить</button>}
         </div>
-        <form className="scanner-manual" onSubmit={manual}><Keyboard/><label>Нет камеры?<input name="code" placeholder="Вставьте код из QR" required/></label><button>Найти</button></form>
+        <form className="scanner-manual" onSubmit={manual}><Keyboard/><label>Нет камеры?<input ref={manualInput} name="code" autoComplete="off" placeholder="Вставьте код из QR" required/></label><button disabled={resolving}>{resolving?"Проверяем…":"Найти"}</button></form>
       </section>
       <aside className="scan-result">
         {!customer&&!message&&<div className="scan-empty"><UserRound/><strong>Здесь появится гость</strong><p>Проверьте имя и подтвердите посещение.</p></div>}
-        {message&&<div className="scan-error" role="alert"><CameraOff/><strong>Не удалось продолжить</strong><p>{message}</p><button onClick={reset}>Попробовать снова</button></div>}
+        {message&&<div className="scan-error" role="alert"><AlertTriangle/><strong>Не удалось продолжить</strong><p>{message}</p><button type="button" onClick={reset}>Попробовать снова</button></div>}
         {customer&&<div className="guest-confirm">
           <div className="guest-confirm-head"><span>{customer.firstName.slice(0,1)}</span><div><small>КЛИЕНТ НАЙДЕН</small><h2>{customer.firstName} {customer.lastName}</h2><p>{customer.phone}</p></div><CheckCircle2/></div>
           <div className="guest-confirm-stats"><span><small>Посещений</small><strong>{customer.totalVisits}</strong></span><span><small>Баланс</small><strong>{customer.totalPoints}</strong></span><span><small>Статус</small><strong>{customer.level}</strong></span></div>
-          {success?<div className="visit-success"><CheckCircle2/><h3>Посещение отмечено</h3><strong>+{success.pointsAdded} бонусов</strong><p>{success.reward?`Также выдана награда: ${success.reward}`:`Теперь посещений: ${success.totalVisits}`}</p><button onClick={reset}><RotateCcw/>Сканировать следующего</button></div>:<>
+          {success?<div className="visit-success" role="status" aria-live="polite"><CheckCircle2/><h3>Посещение отмечено</h3><strong>+{success.pointsAdded} бонусов</strong><p>{success.reward?`Также выдана награда: ${success.reward}`:`Теперь посещений: ${success.totalVisits}`}</p><button type="button" onClick={reset}><RotateCcw/>Сканировать следующего</button></div>:<>
             <label className="scanner-branch">Точка посещения<select value={branchId} onChange={e=>setBranchId(e.target.value)}>{branches.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select></label>
-            <button className="confirm-visit" disabled={saving||!branchId} onClick={()=>void addVisit()}>{saving?<><LoaderCircle className="spin"/>Сохраняем…</>:<><CheckCircle2/>Отметить посещение</>}</button>
+            <button type="button" className="confirm-visit" disabled={saving||branchesLoading||!branchId} onClick={()=>void addVisit()}>{saving?<><LoaderCircle className="spin"/>Сохраняем…</>:<><CheckCircle2/>Отметить посещение</>}</button>
             <p className="scanner-safe"><ShieldCheck/>Защита от двойного начисления включена</p>
           </>}
         </div>}
