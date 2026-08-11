@@ -1671,18 +1671,23 @@ export function LegacyDevicesPage() {
 
 type Subscription = {
   plan: string;
+  tier?: string;
   status: string;
   amount: number;
   currency: string;
   billingPeriod?: string;
   currentPeriodEndsAt?: string;
+  modules?: string[];
+  entitlements?: Record<string, { enabled: boolean; limit?: number | null }>;
 };
+type SubscriptionModule = { code:string; name:string; enabled:boolean; available:boolean; requiredPlan:string };
 export function SubscriptionPage() {
   const [value, setValue] = useState<Subscription | null>(null);
+  const [modules, setModules] = useState<SubscriptionModule[]>([]);
   const [msg, setMsg] = useState("");
   useEffect(() => {
-    api<Subscription>("/subscription")
-      .then(setValue)
+    Promise.all([api<Subscription>("/subscription"),api<SubscriptionModule[]>("/modules")])
+      .then(([subscription,moduleItems])=>{setValue(subscription);setModules(moduleItems)})
       .catch((e) => setMsg(e.message));
   }, []);
   return (
@@ -1718,10 +1723,18 @@ export function SubscriptionPage() {
                 </b>
               </span>
             </div>
+            <div className="subscription-live-state">
+              <div><Check/><span><b>{modules.filter(module=>module.enabled).length} функций активировано</b><small>Доступ пересчитывается сервером по текущему тарифу</small></span></div>
+              <Link href="/modules">Все возможности</Link>
+            </div>
             <a className="primary-action" href="#plans">
               Сравнить тарифы
             </a>
           </div>
+          <section className="subscription-capabilities">
+            <header><div><span>ДОСТУП ПРЯМО СЕЙЧАС</span><h2>Что работает на вашем тарифе</h2><p>«Активно» означает, что модуль включён. Для внешнего сервиса, например Poster, всё равно потребуется токен подключения.</p></div><Link href="/integrations">Открыть интеграции</Link></header>
+            <div>{modules.map(module=><article className={module.enabled?"enabled":module.available?"available":"locked"} key={module.code}><span>{module.enabled?<Check/>:<LockKeyhole/>}</span><div><strong>{module.name}</strong><small>{module.enabled?"Готово к работе":module.available?"Доступно — требуется настройка":`Доступно с тарифа ${module.requiredPlan}`}</small></div><b>{module.enabled?"Активно":module.available?"Настроить":module.requiredPlan}</b></article>)}</div>
+          </section>
           <section className="pricing-section" id="plans">
             <div className="pricing-heading">
               <span>ТАРИФЫ TAPPIX</span>
