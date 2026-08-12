@@ -1920,12 +1920,12 @@ export function AnalyticsPage() {
               <strong>{data.totals.visits}</strong>
               <MetricDelta current={data.totals.visits} previous={data.previous.visits} />
             </article>
-            <article>
+            {tier==="starter"&&<article>
               <UserCheck />
               <span>Новых гостей</span>
               <strong>{data.audience.new}</strong>
               <MetricDelta current={data.audience.new} previous={data.previous.new} />
-            </article>
+            </article>}
             {tier!=="starter"&&<article>
               <Repeat2 />
               <span>Возвращаются</span>
@@ -1934,12 +1934,6 @@ export function AnalyticsPage() {
                 {data.audience.returning} клиентов с повторным визитом
               </small>
             </article>}
-            <article>
-              <Gift />
-              <span>Бонусов выдано</span>
-              <strong>{data.totals.pointsIssued}</strong>
-              <MetricDelta current={data.totals.pointsIssued} previous={data.previous.pointsIssued} />
-            </article>
             {tier!=="starter"&&<article className="risk-metric">
               <AlertTriangle />
               <span>Риск ухода</span>

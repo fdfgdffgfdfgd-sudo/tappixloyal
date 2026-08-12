@@ -66,6 +66,8 @@ type Wallet = {
     nextMin: number;
   };
   monthly: { visits: number; earned: number; spent: number; savings: number };
+  bonusValue: number;
+  bonusExpiry: { date?: string; amount: number };
   achievements: {
     code: string;
     title: string;
@@ -360,7 +362,7 @@ export function PremiumGuestWallet() {
           <div className="card-balance">
             <small>ДОСТУПНО</small>
             <strong>{profile.points.toLocaleString("ru-RU")}</strong>
-            <span>бонусов</span>
+            <span>бонусов · ≈ {Math.round(wallet.bonusValue || profile.points).toLocaleString("ru-RU")} ₸</span>
           </div>
           <div className="card-owner">
             <div>
@@ -392,6 +394,7 @@ export function PremiumGuestWallet() {
       </section>
       <div className="wallet-content">
         <header className="wallet-content-head"><div><small>ДОБРО ПОЖАЛОВАТЬ</small><h1>{profile.firstName}, всё важное здесь</h1></div><a href="#wallet-history">История</a></header>
+        <section className="wallet-status-row"><article><Gift/><span><small>СЛЕДУЮЩАЯ НАГРАДА</small><strong>{wallet.nextReward.remaining>0?`Ещё ${wallet.nextReward.remaining} посещ.`:"Уже доступна"}</strong></span></article><article><History/><span><small>СРОК БОНУСОВ</small><strong>{wallet.bonusExpiry?.date?`${wallet.bonusExpiry.amount} сгорят ${new Date(wallet.bonusExpiry.date).toLocaleDateString("ru-RU",{day:"numeric",month:"short"})}`:"Не сгорают"}</strong></span></article></section>
         {profile.portal?.loyaltyMode === "stamps" && (
           <section className="stamp-card">
             <header>
