@@ -18,9 +18,15 @@ import (
 
 func StartAutomation(ctx context.Context, db *pgxpool.Pool) {
 	run := func() {
-		_, _ = processBirthdayBonuses(ctx, db, "")
-		_, _ = processCampaignAutomations(ctx, db, "")
-		_, _ = processReferralRewards(ctx, db, "")
+		if _, err := processBirthdayBonuses(ctx, db, ""); err != nil {
+			slog.Error("birthday automation worker failed", "error", err)
+		}
+		if _, err := processCampaignAutomations(ctx, db, ""); err != nil {
+			slog.Error("campaign automation worker failed", "error", err)
+		}
+		if _, err := processReferralRewards(ctx, db, ""); err != nil {
+			slog.Error("referral reward worker failed", "error", err)
+		}
 	}
 	go func() {
 		run()
@@ -208,7 +214,7 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 		}
 		if item.channel != "email" || item.email == "" {
 			status, errorText = "skipped", "Канал недоступен или у клиента нет email"
-		} else if sendErr := sendAutomationEmail(ctx, item.email, item.subject, message); sendErr != nil {
+		} else if sendErr := sendEmailWithTimeout(ctx, item.email, item.subject, message); sendErr != nil {
 			status, errorText = "failed", sendErr.Error()
 		}
 		var nextAttempt *time.Time
@@ -227,7 +233,7 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 	return processed, nil
 }
 
-func sendAutomationEmail(ctx context.Context, recipient, subject, message string) error {
+func sendEmailWithTimeout(ctx context.Context, recipient, subject, message string) error {
 	host := envValue("SMTP_HOST", "mailpit")
 	address := net.JoinHostPort(host, envValue("SMTP_PORT", "1025"))
 	deliveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

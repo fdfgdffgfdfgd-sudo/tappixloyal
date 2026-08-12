@@ -1,9 +1,7 @@
 package httpapi
 
 import (
-	"fmt"
 	"net/http"
-	"net/smtp"
 	"os"
 	"strings"
 	"time"
@@ -48,11 +46,7 @@ func (a *api) sendNotification(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось создать уведомление")
 		return
 	}
-	host := envValue("SMTP_HOST", "mailpit")
-	port := envValue("SMTP_PORT", "1025")
-	from := envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>")
-	message := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s", from, in.Recipient, in.Subject, in.Body))
-	err = smtp.SendMail(host+":"+port, nil, fromAddress(from), []string{in.Recipient}, message)
+	err = sendEmailWithTimeout(r.Context(), strings.TrimSpace(in.Recipient), strings.TrimSpace(in.Subject), strings.TrimSpace(in.Body))
 	status := "sent"
 	if err != nil {
 		status = "failed"

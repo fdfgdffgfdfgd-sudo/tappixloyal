@@ -3,12 +3,11 @@ package httpapi
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
-	"github.com/jackc/pgx/v5"
 	"net/http"
-	"net/smtp"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type campaignInput struct {
@@ -144,7 +143,7 @@ func (a *api) sendCampaign(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		personal := strings.ReplaceAll(body, "{{name}}", x["name"])
-		e := smtp.SendMail(envValue("SMTP_HOST", "mailpit")+":"+envValue("SMTP_PORT", "1025"), nil, fromAddress(envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>")), []string{x["email"]}, []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s", envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>"), x["email"], subject, personal)))
+		e := sendEmailWithTimeout(r.Context(), x["email"], subject, personal)
 		recipientStatus, errorText := "sent", ""
 		var sentAt any = time.Now()
 		if e != nil {
