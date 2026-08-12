@@ -45,6 +45,22 @@ curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: applicatio
 assert_get_json bonus-liability /analytics/bonus-liability '.data.issued >= 0 and .data.liability >= 0 and .data.expectedRedemptionCost >= 0'
 assert_get_json registration-retention '/analytics/retention?cohortType=registration&periods=4' '.data.grain == "month" and .data.periods == 4 and (.data.cohorts | type == "array")'
 assert_get_json purchase-retention '/analytics/retention?cohortType=first_purchase&periods=4' '.data.grain == "week" and (.data.cohorts | type == "array")'
+assert_get_json report-schedules /reports/schedules '.data | type == "array"'
+report_schedule=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"name":"Integration owner report","reportType":"owner_summary","channel":"email","recipients":["owner@example.com"],"frequency":"weekly","timezone":"Asia/Almaty","sendHour":9,"sendWeekday":1,"format":"xlsx","active":true}' "$API_URL/reports/schedules")
+report_schedule_id=$(printf '%s' "$report_schedule" | jq -r '.data.id')
+report_run=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/reports/schedules/$report_schedule_id/run")
+report_run_id=$(printf '%s' "$report_run" | jq -r '.data.id')
+i=0
+report_status=queued
+while [ "$i" -lt 30 ] && { [ "$report_status" = queued ] || [ "$report_status" = processing ]; }; do
+	sleep 1
+	report_status=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/reports/runs" | jq -r --arg id "$report_run_id" '.data[] | select(.id==$id) | .status')
+	i=$((i+1))
+done
+test "$report_status" = sent
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/reports/runs/$report_run_id/download" -o "$fixture_dir/report.xlsx"
+unzip -t "$fixture_dir/report.xlsx" >/dev/null
+curl -fsS -X DELETE -H "Authorization: Bearer $token" "$API_URL/reports/schedules/$report_schedule_id" | jq -e '.data.deleted == true' >/dev/null
 assert_get_json integration-connections /integration-connections '.data | type == "array"'
 assert_get_json webhook-deliveries /webhook-deliveries '.data | type == "array"'
 assert_get_json campaigns /campaigns '.data | type == "array"'

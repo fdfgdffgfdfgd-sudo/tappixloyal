@@ -8,6 +8,7 @@ import {
   Check,
   ChevronDown,
   Gift,
+  FileText,
   Menu,
   LayoutDashboard,
   LogOut,
@@ -27,7 +28,7 @@ const items: readonly (readonly [string, readonly (readonly [string, LucideIcon,
   ["Работа", [["/", LayoutDashboard, "Обзор"], ["/customers", Users, "Клиенты"], ["/scanner", Camera, "Staff Mode"]]],
   ["Лояльность", [["/loyalty", Gift, "Программа"], ["/referrals", UsersRound, "Рефералы"]]],
   ["Коммуникации", [["/campaigns", Send, "Кампании и автоматизации"]]],
-  ["Аналитика", [["/analytics", BarChart3, "Аналитика"]]],
+  ["Аналитика", [["/analytics", BarChart3, "Аналитика"], ["/reports", FileText, "Отчёты"]]],
   ["Система", [["/integrations", Plug, "Интеграции"], ["/employees", Users, "Команда"], ["/settings", Settings, "Настройки"]]],
 ] as const;
 const settingsRoutes = new Set([
