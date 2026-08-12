@@ -946,6 +946,7 @@ export function LoyaltyPage() {
     }[]
   >([]);
   const [processing, setProcessing] = useState(false);
+  const [workspace, setWorkspace] = useState<"program" | "rewards" | "automations">("program");
   useEffect(() => {
     api<Loyalty>("/loyalty/rules")
       .then(setValue)
@@ -1016,32 +1017,36 @@ export function LoyaltyPage() {
       subtitle="Настройте начисления и награды без разработчика"
     >
       <Notice text={msg} />
-      <ProgramMechanics />
-      <div className="loyalty-next-actions">
-        <Link href="/devices"><QrCode/><span><strong>1. Поделитесь картой</strong><small>QR и NFC для регистрации</small></span></Link>
-        <Link href="/scanner"><Nfc/><span><strong>2. Отмечайте визиты</strong><small>Сканер карты гостя</small></span></Link>
-        <Link href="/analytics"><TrendingUp/><span><strong>3. Следите за возвратом</strong><small>Удержание и риск ухода</small></span></Link>
-      </div>
-      <details className="loyalty-advanced">
-        <summary><span><Gift/><strong>Награды и автоматизация</strong><small>Дополнительные сценарии для растущего бизнеса</small></span><span>Открыть настройки</span></summary>
-        <div className="loyalty-advanced-content">
-      <RewardBuilder />
+      <nav className="loyalty-workspace-tabs" aria-label="Разделы программы">
+        <button className={workspace === "program" ? "active" : ""} aria-pressed={workspace === "program"} onClick={() => setWorkspace("program")}><CreditCard/><span><strong>Программа</strong><small>Механика и карта</small></span></button>
+        <button className={workspace === "rewards" ? "active" : ""} aria-pressed={workspace === "rewards"} onClick={() => setWorkspace("rewards")}><Gift/><span><strong>Награды</strong><small>Что получит клиент</small></span></button>
+        <button className={workspace === "automations" ? "active" : ""} aria-pressed={workspace === "automations"} onClick={() => setWorkspace("automations")}><Bell/><span><strong>Автоматизации</strong><small>Когда начислять и возвращать</small></span></button>
+      </nav>
+      {workspace === "program" && <div className="loyalty-workspace-panel"><ProgramMechanics />
+        <section className="loyalty-launch-path"><header><div><small>ПОСЛЕ ПУБЛИКАЦИИ</small><h2>Три шага до первых результатов</h2></div></header><div className="loyalty-next-actions">
+          <Link href="/devices"><b>1</b><QrCode/><span><strong>Разместите QR или NFC</strong><small>Клиент откроет и сохранит карту</small></span></Link>
+          <Link href="/scanner"><b>2</b><Nfc/><span><strong>Отмечайте покупки</strong><small>Сотрудник сканирует карту гостя</small></span></Link>
+          <Link href="/analytics"><b>3</b><TrendingUp/><span><strong>Следите за возвратом</strong><small>Увидите повторные визиты и выручку</small></span></Link>
+        </div></section>
+      </div>}
+      {workspace === "rewards" && <div className="loyalty-workspace-panel"><div className="workspace-explainer"><Gift/><div><small>НАГРАДЫ</small><h2>Дайте клиенту понятную цель</h2><p>Создайте подарок, скидку или услугу и укажите простое условие получения.</p></div></div><RewardBuilder /></div>}
+      {workspace === "automations" && <div className="loyalty-workspace-panel"><div className="workspace-explainer"><Bell/><div><small>АВТОМАТИЗАЦИИ</small><h2>Система действует в нужный момент</h2><p>Настройте базовые начисления и проверьте клиентов, которых пора вернуть.</p></div></div>
       <form className="settings-card" onSubmit={save}>
         <div className="settings-title">
           <span>
             <Gift />
           </span>
           <div>
-            <h2>Основные правила</h2>
-            <p>Применяются ко всем филиалам</p>
+            <h2>Автоматические начисления</h2>
+            <p>Применяются ко всем филиалам. Нулевое значение отключает начисление.</p>
           </div>
         </div>
         <div className="form-grid">
-          {field("welcomeBonus", "Приветственный бонус")}
-          {field("pointsPerVisit", "Бонусов за посещение")}
-          {field("birthdayBonus", "Бонус на день рождения")}
-          {field("visitsForReward", "Посещений до подарка")}
-          {field("rewardName", "Название подарка", "text")}
+          {field("welcomeBonus", "После регистрации, бонусов")}
+          {field("pointsPerVisit", "После посещения, бонусов")}
+          {field("birthdayBonus", "На день рождения, бонусов")}
+          {field("visitsForReward", "Цель по посещениям")}
+          {field("rewardName", "Подарок за достижение цели", "text")}
         </div>
         <button className="primary-action">Сохранить правила</button>
       </form>
@@ -1051,17 +1056,16 @@ export function LoyaltyPage() {
             <Cake />
           </span>
           <div>
-            <h2>Birthday-автоматизация</h2>
+            <h2>День рождения</h2>
             <p>
-              Система проверяет дни рождения каждый час и начисляет бонус только
-              один раз в год.
+              Система начисляет настроенный бонус один раз в год. Кнопка запускает безопасную ручную проверку прямо сейчас.
             </p>
           </div>
           <button
             disabled={processing || value.birthdayBonus <= 0}
             onClick={runBirthdays}
           >
-            {processing ? "Проверяем…" : "Запустить проверку"}
+            {processing ? "Проверяем…" : value.birthdayBonus <= 0 ? "Сначала задайте бонус выше" : "Проверить сейчас"}
           </button>
         </section>
         <section className="inactive-card">
@@ -1070,8 +1074,8 @@ export function LoyaltyPage() {
               <UserX />
             </span>
             <div>
-              <h2>Неактивные клиенты</h2>
-              <p>Сегмент для возвратной кампании</p>
+              <h2>Пора вернуть</h2>
+              <p>Клиенты без визитов за выбранный период</p>
             </div>
             <select
               aria-label="Период неактивности"
@@ -1112,8 +1116,7 @@ export function LoyaltyPage() {
           )}
         </section>
       </div>
-        </div>
-      </details>
+      </div>}
     </SectionShell>
   );
 }
