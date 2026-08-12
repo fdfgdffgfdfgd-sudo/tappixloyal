@@ -72,6 +72,7 @@ grep -q 'tappix_guest_refresh' "$guest_cookies"
 guest_csrf=$(awk '$6 == "tappix_guest_csrf" { print $7 }' "$guest_cookies")
 test -n "$guest_csrf"
 customer_profile=$(curl -fsS -b "$guest_cookies" "$API_URL/customer/me")
+curl -fsS -b "$guest_cookies" "$API_URL/customer/wallet" | jq -e '.data.loyalty.mode and (.data.loyalty.progress >= 0) and (.data.loyalty.remaining >= 0) and (.data.loyalty.eligible | type == "boolean")' >/dev/null
 curl -fsS -b "$guest_cookies" "$API_URL/customer/rewards" | jq -e '.data | type == "array"' >/dev/null
 profile_payload=$(printf '%s' "$customer_profile" | jq -c '{firstName:.data.firstName,lastName:.data.lastName,birthday:(.data.birthday // "" | .[0:10])}')
 csrf_rejected=$(curl -sS -o /dev/null -w '%{http_code}' -b "$guest_cookies" -X PATCH "$API_URL/customer/me" -H 'Content-Type: application/json' -d "$profile_payload")
