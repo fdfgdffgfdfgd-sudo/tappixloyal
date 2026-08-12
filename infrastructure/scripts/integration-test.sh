@@ -64,12 +64,32 @@ export_headers=$(curl -sS -D - -o "$fixture_dir/customers.csv" -H "Authorization
 printf '%s' "$export_headers" | tr -d '\r' | grep -qi '^Content-Type: text/csv'
 grep -q 'Имя,Фамилия,Телефон' "$fixture_dir/customers.csv"
 
-customer_login=$(curl -fsS -X POST "$API_URL/customer/login" -H 'Content-Type: application/json' -d '{"company":"dentline","phone":"+7 700 333 33 33","pin":"1234"}')
-customer_token=$(printf '%s' "$customer_login" | jq -r '.data.accessToken')
-customer_profile=$(curl -fsS "$API_URL/customer/me" -H "Authorization: Bearer $customer_token")
-curl -fsS "$API_URL/customer/rewards" -H "Authorization: Bearer $customer_token" | jq -e '.data | type == "array"' >/dev/null
+guest_cookies="$fixture_dir/guest-cookies.txt"
+customer_login=$(curl -fsS -c "$guest_cookies" -X POST "$API_URL/customer/login" -H 'Content-Type: application/json' -d '{"company":"dentline","phone":"+7 700 333 33 33","pin":"1234"}')
+printf '%s' "$customer_login" | jq -e '.data.authenticated == true and (.data.accessToken | not)' >/dev/null
+grep -q 'tappix_guest_access' "$guest_cookies"
+grep -q 'tappix_guest_refresh' "$guest_cookies"
+guest_csrf=$(awk '$6 == "tappix_guest_csrf" { print $7 }' "$guest_cookies")
+test -n "$guest_csrf"
+customer_profile=$(curl -fsS -b "$guest_cookies" "$API_URL/customer/me")
+curl -fsS -b "$guest_cookies" "$API_URL/customer/rewards" | jq -e '.data | type == "array"' >/dev/null
 profile_payload=$(printf '%s' "$customer_profile" | jq -c '{firstName:.data.firstName,lastName:.data.lastName,birthday:(.data.birthday // "" | .[0:10])}')
-curl -fsS -X PATCH "$API_URL/customer/me" -H "Authorization: Bearer $customer_token" -H 'Content-Type: application/json' -d "$profile_payload" | jq -e '.data.updated == true' >/dev/null
+csrf_rejected=$(curl -sS -o /dev/null -w '%{http_code}' -b "$guest_cookies" -X PATCH "$API_URL/customer/me" -H 'Content-Type: application/json' -d "$profile_payload")
+test "$csrf_rejected" = "403"
+curl -fsS -b "$guest_cookies" -X PATCH "$API_URL/customer/me" -H "X-CSRF-Token: $guest_csrf" -H 'Content-Type: application/json' -d "$profile_payload" | jq -e '.data.updated == true' >/dev/null
+curl -fsS -b "$guest_cookies" -c "$guest_cookies" -H "X-CSRF-Token: $guest_csrf" -X POST "$API_URL/auth/refresh?aud=guest" | jq -e '.success == true' >/dev/null
+guest_csrf=$(awk '$6 == "tappix_guest_csrf" { print $7 }' "$guest_cookies")
+curl -fsS -b "$guest_cookies" -c "$guest_cookies" -H "X-CSRF-Token: $guest_csrf" -X POST "$API_URL/auth/logout?aud=guest" | jq -e '.data.loggedOut == true' >/dev/null
+guest_logged_out=$(curl -sS -o /dev/null -w '%{http_code}' -b "$guest_cookies" "$API_URL/customer/me")
+test "$guest_logged_out" = "401"
+
+platform_cookies="$fixture_dir/platform-cookies.txt"
+platform_login=$(curl -fsS -c "$platform_cookies" -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"admin@tappix.kz","password":"Admin2026!"}')
+printf '%s' "$platform_login" | jq -e '.data.mfaSetupRequired == true and .data.user.role == "super_admin"' >/dev/null
+platform_blocked=$(curl -sS -o /dev/null -w '%{http_code}' -b "$platform_cookies" "$API_URL/admin/dashboard")
+test "$platform_blocked" = "403"
+platform_csrf=$(awk '$6 == "tappix_platform_csrf" { print $7 }' "$platform_cookies")
+curl -fsS -b "$platform_cookies" -H "X-CSRF-Token: $platform_csrf" -X POST "$API_URL/auth/mfa/setup?aud=platform" -H 'Content-Type: application/json' -d '{}' | jq -e '.data.secret | length >= 16' >/dev/null
 
 docmed=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"owner@docmed.kz","password":"DocMed2026!"}')
 docmed_token=$(printf '%s' "$docmed" | jq -r '.data.accessToken')

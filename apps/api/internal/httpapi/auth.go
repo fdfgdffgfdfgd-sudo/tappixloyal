@@ -80,20 +80,15 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = a.db.Exec(r.Context(), `UPDATE users SET last_login_at=now() WHERE id=$1`, userID)
 	a.setSessionCookies(w, access, refresh, role)
-	write(w, 200, envelope{Success: true, Data: map[string]any{"accessToken": access, "refreshToken": refresh, "mfaRequired": false, "user": map[string]string{"id": userID, "companyId": companyID, "firstName": firstName, "lastName": lastName, "role": role}}})
+	write(w, 200, envelope{Success: true, Data: map[string]any{"accessToken": access, "refreshToken": refresh, "mfaRequired": false, "mfaSetupRequired": role == "super_admin" && !mfaEnabled, "user": map[string]string{"id": userID, "companyId": companyID, "firstName": firstName, "lastName": lastName, "role": role}}})
 }
 
 func (a *api) refresh(w http.ResponseWriter, r *http.Request) {
 	var in refreshInput
 	_ = json.NewDecoder(r.Body).Decode(&in)
 	if in.RefreshToken == "" {
-		if r.URL.Query().Get("aud") == "platform" {
-			if c, err := r.Cookie("tappix_platform_refresh"); err == nil {
-				in.RefreshToken = c.Value
-			}
-		} else if c, err := r.Cookie("tappix_refresh"); err == nil {
-			in.RefreshToken = c.Value
-		} else if c, err := r.Cookie("tappix_platform_refresh"); err == nil {
+		prefix := sessionCookiePrefix(r.URL.Query().Get("aud"))
+		if c, err := r.Cookie(prefix + "_refresh"); err == nil {
 			in.RefreshToken = c.Value
 		}
 	}
@@ -121,6 +116,10 @@ func (a *api) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.setSessionCookies(w, access, refresh, session.Role)
+	if session.Role == "customer" {
+		write(w, 200, envelope{Success: true, Data: map[string]bool{"authenticated": true}})
+		return
+	}
 	write(w, 200, envelope{Success: true, Data: map[string]string{"accessToken": access, "refreshToken": refresh}})
 }
 
@@ -128,9 +127,8 @@ func (a *api) logout(w http.ResponseWriter, r *http.Request) {
 	var in refreshInput
 	_ = json.NewDecoder(r.Body).Decode(&in)
 	if in.RefreshToken == "" {
-		if c, err := r.Cookie("tappix_refresh"); err == nil {
-			in.RefreshToken = c.Value
-		} else if c, err := r.Cookie("tappix_platform_refresh"); err == nil {
+		prefix := sessionCookiePrefix(r.URL.Query().Get("aud"))
+		if c, err := r.Cookie(prefix + "_refresh"); err == nil {
 			in.RefreshToken = c.Value
 		}
 	}
@@ -142,7 +140,7 @@ func (a *api) logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = a.redis.Del(r.Context(), "refresh:"+hash, "sessionmeta:"+hash).Err()
-	a.clearSessionCookies(w)
+	a.clearSessionCookies(w, r.URL.Query().Get("aud"))
 	write(w, 200, envelope{Success: true, Data: map[string]bool{"loggedOut": true}})
 }
 
@@ -152,8 +150,12 @@ func (a *api) authenticate(next http.Handler) http.Handler {
 		token := ""
 		if strings.HasPrefix(header, "Bearer ") {
 			token = strings.TrimPrefix(header, "Bearer ")
-		} else if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/audit" {
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/audit" || r.URL.Query().Get("aud") == "platform" {
 			if c, err := r.Cookie("tappix_platform_access"); err == nil {
+				token = c.Value
+			}
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/customer/") {
+			if c, err := r.Cookie("tappix_guest_access"); err == nil {
 				token = c.Value
 			}
 		} else if c, err := r.Cookie("tappix_access"); err == nil {
@@ -167,6 +169,27 @@ func (a *api) authenticate(next http.Handler) http.Handler {
 		if err != nil {
 			fail(w, 401, "INVALID_ACCESS_TOKEN", "Сессия недействительна")
 			return
+		}
+		guestRoute := strings.HasPrefix(r.URL.Path, "/api/v1/customer/")
+		adminRoute := strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/audit"
+		if guestRoute && claims.Audience != "guest" {
+			fail(w, 403, "INVALID_AUDIENCE", "Эта сессия не предназначена для карты клиента")
+			return
+		}
+		if !guestRoute && claims.Audience == "guest" {
+			fail(w, 403, "INVALID_AUDIENCE", "Клиентская сессия не даёт доступ к кабинету бизнеса")
+			return
+		}
+		if adminRoute && claims.Audience != "platform" {
+			fail(w, 403, "INVALID_AUDIENCE", "Требуется сессия платформы")
+			return
+		}
+		if adminRoute && claims.Role == "super_admin" {
+			var mfaEnabled bool
+			if a.db.QueryRow(r.Context(), `SELECT mfa_enabled FROM users WHERE id=$1 AND status='active'`, claims.Subject).Scan(&mfaEnabled) != nil || !mfaEnabled {
+				fail(w, 403, "MFA_SETUP_REQUIRED", "Настройте MFA перед входом в Platform Console")
+				return
+			}
 		}
 		if claims.Role != "super_admin" {
 			var active bool

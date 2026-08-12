@@ -21,6 +21,7 @@ import {
   Users,
 } from "lucide-react";
 import { CompanyProvisioningWizard } from "./company-provisioning-wizard";
+import { csrfHeaders } from "@/lib/csrf";
 const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
 type Company = {
   id: string;
@@ -115,18 +116,19 @@ export function AdminPortal() {
     let response = await fetch(`${base}${path}`, {
       ...init,
       credentials: "include",
-      headers: { "Content-Type": "application/json", ...init.headers },
+      headers: { "Content-Type": "application/json", ...csrfHeaders("platform"), ...init.headers },
     });
     if (response.status === 401) {
       const refreshed = await fetch(`${base}/auth/refresh?aud=platform`, {
         method: "POST",
         credentials: "include",
+        headers: csrfHeaders("platform"),
       });
       if (refreshed.ok)
         response = await fetch(`${base}${path}`, {
           ...init,
           credentials: "include",
-          headers: { "Content-Type": "application/json", ...init.headers },
+          headers: { "Content-Type": "application/json", ...csrfHeaders("platform"), ...init.headers },
         });
     }
     if (response.status === 401) {
@@ -278,9 +280,10 @@ export function AdminPortal() {
         <button
           className="platform-exit"
           onClick={async () => {
-            await fetch(`${base}/auth/logout`, {
+            await fetch(`${base}/auth/logout?aud=platform`, {
               method: "POST",
               credentials: "include",
+              headers: csrfHeaders("platform"),
             });
             location.href = "/login";
           }}

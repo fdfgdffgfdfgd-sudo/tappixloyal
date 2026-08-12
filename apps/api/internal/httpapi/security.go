@@ -17,18 +17,71 @@ import (
 
 func (a *api) setSessionCookies(w http.ResponseWriter, access, refresh, role string) {
 	secure := os.Getenv("COOKIE_SECURE") == "true"
-	prefix := "tappix"
-	if role == "super_admin" {
-		prefix = "tappix_platform"
+	prefix := sessionCookiePrefix(role)
+	refreshMaxAge := 30 * 24 * 60 * 60
+	if role == "customer" {
+		refreshMaxAge = 90 * 24 * 60 * 60
 	}
 	http.SetCookie(w, &http.Cookie{Name: prefix + "_access", Value: access, Path: "/api/v1", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: 15 * 60})
-	http.SetCookie(w, &http.Cookie{Name: prefix + "_refresh", Value: refresh, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: 30 * 24 * 60 * 60})
+	http.SetCookie(w, &http.Cookie{Name: prefix + "_refresh", Value: refresh, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: refreshMaxAge})
+	csrf := make([]byte, 32)
+	_, _ = rand.Read(csrf)
+	http.SetCookie(w, &http.Cookie{Name: prefix + "_csrf", Value: base64.RawURLEncoding.EncodeToString(csrf), Path: "/", Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: refreshMaxAge})
 }
 
-func (a *api) clearSessionCookies(w http.ResponseWriter) {
-	for _, item := range []struct{ name, path string }{{"tappix_access", "/api/v1"}, {"tappix_refresh", "/api/v1/auth"}, {"tappix_platform_access", "/api/v1"}, {"tappix_platform_refresh", "/api/v1/auth"}} {
+func sessionCookiePrefix(role string) string {
+	switch role {
+	case "super_admin", "platform":
+		return "tappix_platform"
+	case "customer", "guest":
+		return "tappix_guest"
+	default:
+		return "tappix"
+	}
+}
+
+func (a *api) clearSessionCookies(w http.ResponseWriter, audience string) {
+	prefix := sessionCookiePrefix(audience)
+	for _, item := range []struct{ name, path string }{{prefix + "_access", "/api/v1"}, {prefix + "_refresh", "/api/v1/auth"}, {prefix + "_csrf", "/"}} {
 		http.SetCookie(w, &http.Cookie{Name: item.name, Value: "", Path: item.path, HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteStrictMode})
 	}
+}
+
+func csrfProtection(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions || r.Header.Get("Authorization") != "" || csrfExemptPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		audience := "business"
+		if strings.HasPrefix(r.URL.Path, "/api/v1/customer/") || r.URL.Query().Get("aud") == "guest" {
+			audience = "guest"
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Query().Get("aud") == "platform" {
+			audience = "platform"
+		}
+		prefix := sessionCookiePrefix(audience)
+		_, accessErr := r.Cookie(prefix + "_access")
+		_, refreshErr := r.Cookie(prefix + "_refresh")
+		if accessErr != nil && refreshErr != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		cookie, err := r.Cookie(prefix + "_csrf")
+		provided := r.Header.Get("X-CSRF-Token")
+		if err != nil || provided == "" || !hmac.Equal([]byte(cookie.Value), []byte(provided)) {
+			fail(w, http.StatusForbidden, "CSRF_INVALID", "Защитный токен недействителен. Обновите страницу")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func csrfExemptPath(path string) bool {
+	switch path {
+	case "/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/customer/register", "/api/v1/customer/login", "/api/v1/customer/otp/request", "/api/v1/customer/otp/verify":
+		return true
+	}
+	return strings.HasPrefix(path, "/api/v1/public/") || strings.HasPrefix(path, "/api/v1/integrations/")
 }
 
 func (a *api) createMFAChallenge(r *http.Request, userID string) string {

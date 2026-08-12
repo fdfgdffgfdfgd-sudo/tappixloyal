@@ -113,7 +113,8 @@ func (a *api) customerOTPVerify(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "TOKEN_ERROR", "Не удалось создать сессию")
 		return
 	}
-	write(w, 200, envelope{Success: true, Data: map[string]string{"accessToken": access, "refreshToken": refresh}})
+	a.setSessionCookies(w, access, refresh, "customer")
+	write(w, 200, envelope{Success: true, Data: map[string]bool{"authenticated": true}})
 }
 
 func (a *api) sendWhatsAppOTP(r *http.Request, phone, code string) error {
