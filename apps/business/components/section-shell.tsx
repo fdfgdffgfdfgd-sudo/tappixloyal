@@ -23,6 +23,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { api, logout } from "@/lib/api";
 import { PageHeader } from "./ui-system";
+import { useDialogFocusTrap } from "./use-dialog-focus-trap";
 
 const items: readonly (readonly [string, readonly (readonly [string, LucideIcon, string])[]])[] = [
   ["Работа", [["/", LayoutDashboard, "Обзор"], ["/customers", Users, "Клиенты"], ["/scanner", Camera, "Staff Mode"]]],
@@ -73,6 +74,7 @@ export function SectionShell({
   const [commandQuery, setCommandQuery] = useState("");
   const [actualRole, setActualRole] = useState("");
   const commandTrigger = useRef<HTMLButtonElement>(null);
+  const commandDialog = useDialogFocusTrap<HTMLDivElement>(commandOpen, closeCommand);
   const user = useMemo(() => {
     if (typeof window === "undefined")
       return { firstName: "", lastName: "", role: "" };
@@ -223,7 +225,7 @@ export function SectionShell({
         <section id="main-content">{children}</section>
       </main>
       {navOpen && <button className="product-nav-scrim" aria-label="Закрыть меню" onClick={() => setNavOpen(false)}/>}
-      {commandOpen && <div className="command-backdrop" role="presentation" onMouseDown={closeCommand}><div className="command-panel" role="dialog" aria-modal="true" aria-label="Быстрый переход" onMouseDown={event => event.stopPropagation()}><label><Search/><input autoFocus value={commandQuery} onChange={event => setCommandQuery(event.target.value)} placeholder="Куда перейти?" aria-label="Поиск раздела"/><kbd>Esc</kbd></label><div>{commandItems.map(([href, Icon, label]) => <Link href={href} key={href} onClick={closeCommand}><Icon/><span>{label}</span></Link>)}{!commandItems.length && <p className="command-empty">Раздел не найден</p>}</div></div></div>}
+      {commandOpen && <div className="command-backdrop" role="presentation" onMouseDown={closeCommand}><div ref={commandDialog} className="command-panel" role="dialog" aria-modal="true" aria-label="Быстрый переход" onMouseDown={event => event.stopPropagation()}><label><Search/><input autoFocus value={commandQuery} onChange={event => setCommandQuery(event.target.value)} placeholder="Куда перейти?" aria-label="Поиск раздела"/><kbd>Esc</kbd></label><div>{commandItems.map(([href, Icon, label]) => <Link href={href} key={href} onClick={closeCommand}><Icon/><span>{label}</span></Link>)}{!commandItems.length && <p className="command-empty">Раздел не найден</p>}</div></div></div>}
     </div>
   );
 }

@@ -8,7 +8,7 @@ async function expectNoSeriousAccessibilityViolations(page: Page) {
 }
 
 test("tenant owner can enter the workspace and navigate core tasks", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name.startsWith("mobile"), "Owner desktop flow is covered at the primary admin breakpoint");
+  const mobile = testInfo.project.name.startsWith("mobile");
   await page.goto("/login");
   await page.getByLabel("Email").fill("armat@tappix.kz");
   await page.locator('input[name="password"]').fill("Tappix2026!");
@@ -16,20 +16,25 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Обзор" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Программа" }).click();
+  if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
+  await page.getByRole("link", { name: "Программа", exact: true }).click();
   await expect(page).toHaveURL(/\/loyalty/);
   await expect(page.getByRole("heading", { name: "Программа лояльности" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Отчёты" }).click();
+  if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
+  await page.getByRole("link", { name: "Отчёты", exact: true }).click();
   await expect(page).toHaveURL(/\/reports/);
   await expect(page.getByRole("heading", { name: "Регулярные отчёты" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Создать/ }).first()).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
-  await page.getByRole("link", { name: "Staff Mode" }).click();
+  if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
+  await page.getByRole("link", { name: "Staff Mode", exact: true }).click();
   await expect(page).toHaveURL(/\/scanner/);
   await expect(page.getByRole("heading", { name: "Сканер гостя" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
+  const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(hasHorizontalOverflow).toBe(false);
 });
 
 test("customer opens the wallet and shows cashier QR with fallback code", async ({ page }) => {
@@ -45,10 +50,18 @@ test("customer opens the wallet and shows cashier QR with fallback code", async 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("КОД КЛИЕНТА")).toBeVisible();
   await expect(dialog.getByText(/^\d{3} \d{3}$/)).toBeVisible();
-  await expect(dialog.getByRole("button", { name: /Скопировать код/ })).toBeVisible();
+  const copyCode = dialog.getByRole("button", { name: /Скопировать код/ });
+  const closeDialog = dialog.getByRole("button", { name: "Закрыть" });
+  await expect(copyCode).toBeVisible();
+  await expect(closeDialog).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(copyCode).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeDialog).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: /Показать карту на кассе/ })).toBeFocused();
   await expectNoSeriousAccessibilityViolations(page);
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(hasHorizontalOverflow).toBe(false);

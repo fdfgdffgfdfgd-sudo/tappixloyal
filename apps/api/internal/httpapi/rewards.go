@@ -370,6 +370,15 @@ func (a *api) transitionReward(w http.ResponseWriter, r *http.Request, target st
 	defer tx.Rollback(r.Context())
 	tenant := companyID(r)
 	claims := identity(r)
+	idempotency := strings.TrimSpace(in.IdempotencyKey)
+	if idempotency != "" {
+		idempotency = target + ":" + r.PathValue("id") + ":" + idempotency
+		var existing string
+		if tx.QueryRow(r.Context(), `SELECT reward_id FROM reward_transactions WHERE company_id=$1 AND idempotency_key=$2`, tenant, idempotency).Scan(&existing) == nil && existing == r.PathValue("id") {
+			write(w, 200, envelope{Success: true, Data: map[string]any{"id": existing, "status": target, "idempotentReplay": true}})
+			return
+		}
+	}
 	var customerID, status string
 	var expires, reservedUntil *time.Time
 	err = tx.QueryRow(r.Context(), `SELECT customer_id,status,expires_at,reserved_until FROM customer_rewards WHERE company_id=$1 AND id=$2 FOR UPDATE`, tenant, r.PathValue("id")).Scan(&customerID, &status, &expires, &reservedUntil)
@@ -413,7 +422,7 @@ func (a *api) transitionReward(w http.ResponseWriter, r *http.Request, target st
 	}
 	_, err = tx.Exec(r.Context(), `UPDATE customer_rewards SET status=$3,reserved_at=coalesce($4,reserved_at),reserved_until=$5,reserved_by=coalesce($6,reserved_by),redeemed_at=$7,redeemed_by=$8,cancelled_at=$9,cancelled_by=$10 WHERE company_id=$1 AND id=$2`, tenant, r.PathValue("id"), target, reservedAt, reservedTo, reservedBy, redeemedAt, redeemedBy, cancelledAt, cancelledBy)
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$5,$7,nullif($8,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, r.PathValue("id"), customerID, claims.Subject, target, status, strings.TrimSpace(in.Reason), in.IdempotencyKey)
+		_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$5,$7,nullif($8,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, r.PathValue("id"), customerID, claims.Subject, target, status, strings.TrimSpace(in.Reason), idempotency)
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "REWARD_TRANSITION_FAILED", "Не удалось изменить статус награды")
@@ -465,6 +474,15 @@ func (a *api) transitionRewardDirect(w http.ResponseWriter, r *http.Request, tar
 	defer tx.Rollback(r.Context())
 	tenant := companyID(r)
 	claims := identity(r)
+	idempotency := strings.TrimSpace(in.IdempotencyKey)
+	if idempotency != "" {
+		idempotency = target + ":" + r.PathValue("id") + ":" + idempotency
+		var existing string
+		if tx.QueryRow(r.Context(), `SELECT reward_id FROM reward_transactions WHERE company_id=$1 AND idempotency_key=$2`, tenant, idempotency).Scan(&existing) == nil && existing == r.PathValue("id") {
+			write(w, 200, envelope{Success: true, Data: map[string]any{"id": existing, "status": target, "idempotentReplay": true}})
+			return
+		}
+	}
 	var customerID, status string
 	var expires, reserved *time.Time
 	if tx.QueryRow(r.Context(), `SELECT customer_id,status,expires_at,reserved_until FROM customer_rewards WHERE company_id=$1 AND id=$2 FOR UPDATE`, tenant, r.PathValue("id")).Scan(&customerID, &status, &expires, &reserved) != nil {
@@ -486,7 +504,7 @@ func (a *api) transitionRewardDirect(w http.ResponseWriter, r *http.Request, tar
 	}
 	_, err = tx.Exec(r.Context(), `UPDATE customer_rewards SET status=$3,reserved_at=CASE WHEN $3='reserved' THEN now() ELSE reserved_at END,reserved_until=$4,reserved_by=CASE WHEN $3='reserved' THEN $5 ELSE reserved_by END,redeemed_at=CASE WHEN $3='redeemed' THEN now() ELSE NULL END,redeemed_by=CASE WHEN $3='redeemed' THEN $5 ELSE NULL END,cancelled_at=CASE WHEN $3='cancelled' THEN now() ELSE NULL END,cancelled_by=CASE WHEN $3='cancelled' THEN $5 ELSE NULL END WHERE company_id=$1 AND id=$2`, tenant, r.PathValue("id"), target, reservedUntil, claims.Subject)
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$5,$7,nullif($8,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, r.PathValue("id"), customerID, claims.Subject, target, status, in.Reason, in.IdempotencyKey)
+		_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$5,$7,nullif($8,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, r.PathValue("id"), customerID, claims.Subject, target, status, in.Reason, idempotency)
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "REWARD_TRANSITION_FAILED", "Не удалось изменить статус награды")

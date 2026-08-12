@@ -125,6 +125,22 @@ paths:
     post: {summary: Queue a new audited delivery attempt, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'202': {$ref: '#/components/responses/Success'}}}
   /reports/runs/{id}/download:
     get: {summary: Download a generated CSV, XLSX, PDF or summary artifact, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: Report artifact}, '404': {$ref: '#/components/responses/Error'}}}
+  /public/reports/{id}:
+    get:
+      security: []
+      summary: Download a report artifact through a short-lived signed URL
+      description: The HMAC token binds the report run and expiry. Used by backend-generated WhatsApp document messages; it does not expose tenant credentials.
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+        - {name: expires, in: query, required: true, schema: {type: integer, format: int64}}
+        - {name: token, in: query, required: true, schema: {type: string}}
+      responses: {'200': {description: Report artifact}, '401': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '410': {$ref: '#/components/responses/Error'}}
+  /settings/guest-portal:
+    get: {summary: Read the published customer-card branding and loyalty program, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    patch:
+      summary: Publish customer-card branding and synchronize the canonical reward definition and rule
+      description: Validates the selected loyalty mode, tenant-scopes all linked records, and writes a loyalty.program.published audit event.
+      responses: {'200': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
   /loyalty/expire-bonuses:
     post:
       summary: Force expiration of due bonus lots

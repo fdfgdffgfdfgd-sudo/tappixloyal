@@ -50,6 +50,7 @@ func (a *api) authenticateAPIKey(scope string, next http.Handler) http.Handler {
 		}
 		claims := tokenClaims{Subject: keyID, CompanyID: tenant, Role: "api_key", ExpiresAt: time.Now().Add(time.Minute).Unix()}
 		ctx := context.WithValue(r.Context(), identityKey, claims)
+		captureTelemetryIdentity(r, claims)
 		ctx = context.WithValue(ctx, apiKeyScopesKey, scopes)
 		ctx = context.WithValue(ctx, apiKeySandboxKey, sandbox)
 		next.ServeHTTP(w, r.WithContext(ctx))

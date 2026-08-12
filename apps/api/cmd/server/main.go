@@ -104,7 +104,7 @@ func startWorkersWhenSchemaReady(ctx context.Context, db *pgxpool.Pool, secret s
 			httpapi.StartAutomation(ctx, db)
 			httpapi.StartIntegrationWorkers(ctx, db, secret)
 			httpapi.StartAnalyticsProjectionWorker(ctx, db)
-			httpapi.StartReportWorker(ctx, db)
+			httpapi.StartReportWorker(ctx, db, secret)
 			slog.Info("background workers started after schema became ready")
 			return
 		}

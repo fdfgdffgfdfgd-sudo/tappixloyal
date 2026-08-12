@@ -61,3 +61,20 @@ func TestReportInputRejectsInvalidSchedule(t *testing.T) {
 		t.Fatal("weekly schedule without weekday must be rejected")
 	}
 }
+
+func TestReportArtifactTokenBindsRunAndExpiry(t *testing.T) {
+	secret := []byte("test-secret")
+	token := reportArtifactToken(secret, "run-a", "100")
+	if token == reportArtifactToken(secret, "run-b", "100") || token == reportArtifactToken(secret, "run-a", "101") {
+		t.Fatal("artifact signature is not bound to run and expiry")
+	}
+}
+
+func TestReportRetryDelayIsBoundedByAttempt(t *testing.T) {
+	if got := reportRetryDelay(1); got != time.Minute {
+		t.Fatalf("first retry delay = %s", got)
+	}
+	if got := reportRetryDelay(2); got != 2*time.Minute {
+		t.Fatalf("second retry delay = %s", got)
+	}
+}

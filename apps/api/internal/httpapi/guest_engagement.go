@@ -64,7 +64,11 @@ func (a *api) customerWallet(w http.ResponseWriter, r *http.Request) {
 	canSpin := lastSpin == nil || lastSpin.Before(time.Now().Add(-7*24*time.Hour))
 	branding := map[string]any{}
 	_ = json.Unmarshal(brandingRaw, &branding)
-	write(w, 200, envelope{Success: true, Data: map[string]any{"customerCode": customerCode, "level": levelProgress(points), "loyalty": canonicalLoyaltyState(branding, points, visits, monetaryValue), "monthly": map[string]int{"visits": monthVisits, "earned": earned, "spent": spent, "savings": spent * 10}, "bonusValue": monetaryValue, "bonusExpiry": map[string]any{"date": nextExpiry, "amount": expiringAmount}, "achievements": achievements, "nextReward": map[string]any{"title": fmt.Sprintf("Подарок за %d посещений", visitsTarget), "remaining": max(0, visitsTarget-visits), "target": visitsTarget}, "referralCode": referral, "referralUrl": fmt.Sprintf("%s/r/%s", envOr("APP_URL", "http://localhost:8088"), referral), "walletPassStatus": "planned", "wheel": map[string]any{"canSpin": canSpin, "lastSpin": lastSpin}}})
+	portal := branding
+	if configured, ok := branding["guestPortal"].(map[string]any); ok {
+		portal = configured
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]any{"customerCode": customerCode, "level": levelProgress(points), "loyalty": canonicalLoyaltyState(portal, points, visits, monetaryValue), "monthly": map[string]int{"visits": monthVisits, "earned": earned, "spent": spent, "savings": spent * 10}, "bonusValue": monetaryValue, "bonusExpiry": map[string]any{"date": nextExpiry, "amount": expiringAmount}, "achievements": achievements, "nextReward": map[string]any{"title": fmt.Sprintf("Подарок за %d посещений", visitsTarget), "remaining": max(0, visitsTarget-visits), "target": visitsTarget}, "referralCode": referral, "referralUrl": fmt.Sprintf("%s/r/%s", envOr("APP_URL", "http://localhost:8088"), referral), "walletPassStatus": "planned", "wheel": map[string]any{"canSpin": canSpin, "lastSpin": lastSpin}}})
 }
 
 func canonicalLoyaltyState(config map[string]any, points, visits int, monetaryValue float64) map[string]any {

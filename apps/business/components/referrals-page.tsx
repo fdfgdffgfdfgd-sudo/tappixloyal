@@ -5,6 +5,7 @@ import { ArrowDown, Check, CheckCircle2, ChevronDown, Copy, Gift, Link2, LoaderC
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import { EmptyState, ErrorState, InfoCallout, Skeleton, StatusBadge } from "./ui-system";
+import { useDialogFocusTrap } from "./use-dialog-focus-trap";
 
 type Program={id:string;name:string;status:"draft"|"active"|"paused";referrerRewardValue:number;friendRewardValue:number;minimumPurchaseAmount:number;rewardDelayDays:number;maxRewardsPerCustomer:number|null;maxRewardsPerMonth:number|null;updatedAt?:string};
 type Analytics={clicks:number;registrations:number;qualified:number;rewarded:number;revenue:number;rewardCost:number;conversionRate:number;qualificationRate:number;leaders:{customerId:string;name:string;referralCode:string;invited:number;rewarded:number;revenue:number}[]};
@@ -13,6 +14,7 @@ const emptyStats:Analytics={clicks:0,registrations:0,qualified:0,rewarded:0,reve
 
 export function ReferralsPage(){
  const[program,setProgram]=useState<Program>(initial),[stats,setStats]=useState<Analytics>(emptyStats),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState(""),[dirty,setDirty]=useState(false),[exampleOpen,setExampleOpen]=useState(false);
+ const exampleDialog=useDialogFocusTrap<HTMLElement>(exampleOpen,()=>setExampleOpen(false));
  async function load(){setLoading(true);setError("");try{const[p,a]=await Promise.all([api<Program|null>("/referrals/program"),api<Analytics>("/referrals/analytics")]);if(p)setProgram(p);setStats(a)}catch(e){setError(e instanceof Error?e.message:"Не удалось загрузить программу")}finally{setLoading(false)}}
  useEffect(()=>{void load()},[]);
  function update(patch:Partial<Program>){setProgram(current=>({...current,...patch}));setDirty(true);setMessage("")}
@@ -32,7 +34,7 @@ export function ReferralsPage(){
    </form><ReferralSummary program={program} stats={stats} money={money}/></div>
    <section className="referral-results"><header><div><h2>Результаты</h2><p>Путь клиентов от открытия ссылки до начисления бонуса.</p></div>{stats.clicks>0&&<StatusBadge tone="success">{stats.conversionRate.toFixed(1)}% зарегистрировались</StatusBadge>}</header>{stats.clicks===0?<EmptyState icon={Link2} title="Рекомендаций пока нет" description="После запуска здесь появятся переходы, регистрации и первые покупки."/>:<div className="referral-result-row"><span><small>Открыли ссылку</small><strong>{stats.clicks}</strong></span><span><small>Зарегистрировались</small><strong>{stats.registrations}</strong></span><span><small>Совершили покупку</small><strong>{stats.qualified}</strong></span><span><small>Получили бонус</small><strong>{stats.rewarded}</strong></span></div>}</section>
    {stats.leaders.length>0&&<section className="referral-leaders"><header><Trophy/><div><h2>Клиенты, которые рекомендуют чаще</h2><p>По успешным приглашениям</p></div></header>{stats.leaders.map((item,index)=><article key={item.customerId}><b>{index+1}</b><span><strong>{item.name||"Клиент"}</strong><small>{item.invited} приглашений · {money(item.revenue)}</small></span></article>)}</section>}
-   {exampleOpen&&<div className="referral-example-bg" onMouseDown={e=>{if(e.target===e.currentTarget)setExampleOpen(false)}}><section role="dialog" aria-modal="true" aria-labelledby="referral-example-title"><header><div><small>ПРИМЕР ДЛЯ КЛИЕНТА</small><h2 id="referral-example-title">Пригласить друга</h2></div><button onClick={()=>setExampleOpen(false)} aria-label="Закрыть"><X/></button></header><div className="referral-example-code"><QrCode/><strong>Моя персональная ссылка</strong><code>tappix.app/r/MADINA</code></div><button onClick={async()=>{await navigator.clipboard.writeText("Приглашаю вас в Dentline — после первой покупки мы оба получим бонусы!");setExampleOpen(false);setMessage("Текст приглашения скопирован")}}><Copy/>Скопировать текст для WhatsApp</button></section></div>}
+   {exampleOpen&&<div className="referral-example-bg" onMouseDown={e=>{if(e.target===e.currentTarget)setExampleOpen(false)}}><section ref={exampleDialog} role="dialog" aria-modal="true" aria-labelledby="referral-example-title"><header><div><small>ПРИМЕР ДЛЯ КЛИЕНТА</small><h2 id="referral-example-title">Пригласить друга</h2></div><button onClick={()=>setExampleOpen(false)} aria-label="Закрыть"><X/></button></header><div className="referral-example-code"><QrCode/><strong>Моя персональная ссылка</strong><code>tappix.app/r/MADINA</code></div><button onClick={async()=>{await navigator.clipboard.writeText("Приглашаю вас в Dentline — после первой покупки мы оба получим бонусы!");setExampleOpen(false);setMessage("Текст приглашения скопирован")}}><Copy/>Скопировать текст для WhatsApp</button></section></div>}
   </>}
  </SectionShell>
 }

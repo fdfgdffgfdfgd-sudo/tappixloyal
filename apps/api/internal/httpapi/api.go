@@ -83,6 +83,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	mux.HandleFunc("GET /api/v1/public/sites/{slug}", a.publicWebsite)
 	mux.HandleFunc("POST /api/v1/public/sites/{slug}/bookings", a.publicCreateBooking)
 	mux.HandleFunc("GET /api/v1/public/files/{id}", a.publicFile)
+	mux.HandleFunc("GET /api/v1/public/reports/{id}", a.publicReportArtifact)
 	mux.HandleFunc("POST /api/v1/integrations/inbound/{key}", a.integrationInboundWebhook)
 	mux.HandleFunc("POST /api/v1/integrations/poster/{key}", a.posterWebhook)
 	mux.Handle("POST /api/v1/integrations/transactions/quote", a.authenticateAPIKey("transactions.read", http.HandlerFunc(a.canonicalTransactionQuote)))

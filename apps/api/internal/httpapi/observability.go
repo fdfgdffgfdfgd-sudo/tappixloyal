@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,59 @@ import (
 	"sync/atomic"
 	"time"
 )
+
+type telemetryIdentity struct {
+	tenantID string
+	actorID  string
+}
+
+type telemetryIdentityKey struct{}
+
+func attachTelemetryIdentity(r *http.Request) (*http.Request, *telemetryIdentity) {
+	value := &telemetryIdentity{}
+	return r.WithContext(context.WithValue(r.Context(), telemetryIdentityKey{}, value)), value
+}
+
+func captureTelemetryIdentity(r *http.Request, claims tokenClaims) {
+	if value, ok := r.Context().Value(telemetryIdentityKey{}).(*telemetryIdentity); ok {
+		value.tenantID = claims.CompanyID
+		value.actorID = claims.Subject
+	}
+}
+
+func telemetryRoute(r *http.Request) string {
+	if r.Pattern != "" && r.Pattern != "/api/v1/" {
+		return r.Pattern
+	}
+	segments := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	for index, segment := range segments {
+		if len(segment) > 24 || isUUID(segment) {
+			segments[index] = "{id}"
+		}
+	}
+	if len(segments) == 0 || segments[0] == "" {
+		return "/"
+	}
+	return "/" + strings.Join(segments, "/")
+}
+
+func isUUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for index, character := range value {
+		if index == 8 || index == 13 || index == 18 || index == 23 {
+			if character != '-' {
+				return false
+			}
+			continue
+		}
+		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
 
 type responseTelemetry struct {
 	http.ResponseWriter
@@ -45,6 +99,7 @@ func metricCounter(key string) *atomic.Uint64 {
 
 func (a *api) observe(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r, telemetryIdentity := attachTelemetryIdentity(r)
 		started := time.Now()
 		activeRequests.Add(1)
 		defer activeRequests.Add(-1)
@@ -53,14 +108,10 @@ func (a *api) observe(next http.Handler) http.Handler {
 		if response.status == 0 {
 			response.status = http.StatusOK
 		}
-		route := r.Pattern
-		if route == "" {
-			route = "unmatched"
-		}
+		route := telemetryRoute(r)
 		statusClass := strconv.Itoa(response.status/100) + "xx"
 		metricCounter(r.Method + "|" + route + "|" + statusClass).Add(1)
-		claims := identity(r)
-		slog.Info("http.request", "event_type", "http.request", "method", r.Method, "route", route, "status", response.status, "duration_ms", time.Since(started).Milliseconds(), "response_bytes", response.bytes, "request_id", response.Header().Get("X-Request-ID"), "tenant_id", claims.CompanyID, "actor_id", claims.Subject)
+		slog.Info("http.request", "event_type", "http.request", "method", r.Method, "route", route, "status", response.status, "duration_ms", time.Since(started).Milliseconds(), "response_bytes", response.bytes, "request_id", response.Header().Get("X-Request-ID"), "tenant_id", telemetryIdentity.tenantID, "actor_id", telemetryIdentity.actorID)
 	})
 }
 

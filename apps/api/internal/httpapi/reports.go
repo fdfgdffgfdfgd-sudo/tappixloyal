@@ -4,17 +4,22 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"log/slog"
 	"mime/multipart"
 	"net"
 	"net/http"
 	"net/smtp"
 	"net/textproto"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -223,7 +228,7 @@ func (a *api) retryReportRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) listReportRuns(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query(r.Context(), `SELECT rr.id,rr.schedule_id,rs.name,rr.status,rr.format,coalesce(rr.filename,''),rr.attempts,coalesce(rr.error,''),rr.created_at,rr.completed_at,(rr.artifact IS NOT NULL) FROM report_runs rr JOIN report_schedules rs ON rs.id=rr.schedule_id WHERE rr.company_id=$1 ORDER BY rr.created_at DESC LIMIT 100`, companyID(r))
+	rows, err := a.db.Query(r.Context(), `SELECT rr.id,rr.schedule_id,rs.name,rr.status,rr.format,coalesce(rr.filename,''),rr.attempts,coalesce(rr.error,''),rr.created_at,rr.completed_at,rr.next_attempt_at,(rr.artifact IS NOT NULL) FROM report_runs rr JOIN report_schedules rs ON rs.id=rr.schedule_id WHERE rr.company_id=$1 ORDER BY rr.created_at DESC LIMIT 100`, companyID(r))
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить историю отчётов")
 		return
@@ -233,11 +238,11 @@ func (a *api) listReportRuns(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, schedule, name, status, format, filename, errorText string
 		var attempts int
-		var created time.Time
+		var created, nextAttempt time.Time
 		var completed *time.Time
 		var downloadable bool
-		if rows.Scan(&id, &schedule, &name, &status, &format, &filename, &attempts, &errorText, &created, &completed, &downloadable) == nil {
-			items = append(items, map[string]any{"id": id, "scheduleId": schedule, "name": name, "status": status, "format": format, "filename": filename, "attempts": attempts, "error": errorText, "createdAt": created, "completedAt": completed, "downloadable": downloadable})
+		if rows.Scan(&id, &schedule, &name, &status, &format, &filename, &attempts, &errorText, &created, &completed, &nextAttempt, &downloadable) == nil {
+			items = append(items, map[string]any{"id": id, "scheduleId": schedule, "name": name, "status": status, "format": format, "filename": filename, "attempts": attempts, "error": errorText, "createdAt": created, "completedAt": completed, "nextAttemptAt": nextAttempt, "downloadable": downloadable})
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: items})
@@ -258,6 +263,35 @@ func (a *api) downloadReportRun(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(artifact)
 }
 
+func reportArtifactToken(secret []byte, id, expires string) string {
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(id + "." + expires))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func (a *api) publicReportArtifact(w http.ResponseWriter, r *http.Request) {
+	expires := r.URL.Query().Get("expires")
+	signature := r.URL.Query().Get("token")
+	expiry, err := strconv.ParseInt(expires, 10, 64)
+	if err != nil || expiry < time.Now().Unix() || !hmac.Equal([]byte(signature), []byte(reportArtifactToken(a.jwtSecret, r.PathValue("id"), expires))) {
+		fail(w, 403, "REPORT_LINK_EXPIRED", "Ссылка на отчёт недействительна или истекла")
+		return
+	}
+	var filename, mime string
+	var artifact []byte
+	err = a.db.QueryRow(r.Context(), `SELECT coalesce(filename,''),coalesce(mime_type,'application/octet-stream'),artifact FROM report_runs WHERE id=$1 AND artifact IS NOT NULL`, r.PathValue("id")).Scan(&filename, &mime, &artifact)
+	if err != nil {
+		fail(w, 404, "REPORT_ARTIFACT_NOT_FOUND", "Файл отчёта не найден")
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(200)
+	_, _ = w.Write(artifact)
+}
+
 func (a *api) auditReport(r *http.Request, action, id string, data map[string]any) {
 	raw, _ := json.Marshal(data)
 	_, _ = a.db.Exec(r.Context(), `INSERT INTO audit_logs(company_id,actor_id,action,entity_type,entity_id,request_id,after_data) VALUES($1,$2,$3,'report',$4,$5,$6)`, companyID(r), identity(r).Subject, action, id, r.Header.Get("X-Request-ID"), raw)
@@ -269,13 +303,13 @@ func queueReportRun(ctx context.Context, db *pgxpool.Pool, company, schedule, ke
 	return id, err
 }
 
-func StartReportWorker(ctx context.Context, db *pgxpool.Pool) {
+func StartReportWorker(ctx context.Context, db *pgxpool.Pool, secret string) {
 	go func() {
 		ticker := time.NewTicker(20 * time.Second)
 		defer ticker.Stop()
 		for {
 			processDueReportSchedules(ctx, db)
-			for processNextReportRun(ctx, db) {
+			for processNextReportRun(ctx, db, secret) {
 			}
 			select {
 			case <-ctx.Done():
@@ -312,7 +346,10 @@ func processDueReportSchedules(ctx context.Context, db *pgxpool.Pool) {
 	}
 }
 
-func processNextReportRun(ctx context.Context, db *pgxpool.Pool) bool {
+func processNextReportRun(ctx context.Context, db *pgxpool.Pool, secret string) bool {
+	// A worker can stop after claiming a run. Recover it without creating a duplicate run.
+	_, _ = db.Exec(ctx, `UPDATE report_runs SET status='queued',next_attempt_at=now(),error='Предыдущая попытка превысила допустимое время' WHERE status='processing' AND started_at<now()-interval '2 minutes' AND attempts<3`)
+	_, _ = db.Exec(ctx, `UPDATE report_runs SET status='failed',error='Доставка не завершилась после трёх попыток',completed_at=now() WHERE status='processing' AND started_at<now()-interval '2 minutes' AND attempts>=3`)
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return false
@@ -320,7 +357,7 @@ func processNextReportRun(ctx context.Context, db *pgxpool.Pool) bool {
 	defer tx.Rollback(ctx)
 	var id, company, schedule, channel, format, name string
 	var recipientsRaw []byte
-	err = tx.QueryRow(ctx, `SELECT rr.id,rr.company_id,rr.schedule_id,rs.channel,rr.format,rs.name,rs.recipients FROM report_runs rr JOIN report_schedules rs ON rs.id=rr.schedule_id WHERE rr.status='queued' ORDER BY rr.created_at FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &company, &schedule, &channel, &format, &name, &recipientsRaw)
+	err = tx.QueryRow(ctx, `SELECT rr.id,rr.company_id,rr.schedule_id,rs.channel,rr.format,rs.name,rs.recipients FROM report_runs rr JOIN report_schedules rs ON rs.id=rr.schedule_id WHERE rr.status='queued' AND rr.next_attempt_at<=now() ORDER BY rr.next_attempt_at,rr.created_at FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &company, &schedule, &channel, &format, &name, &recipientsRaw)
 	if err == pgx.ErrNoRows {
 		return false
 	}
@@ -346,7 +383,7 @@ func processNextReportRun(ctx context.Context, db *pgxpool.Pool) bool {
 	}
 	var recipients []string
 	_ = json.Unmarshal(recipientsRaw, &recipients)
-	status, deliveryError := deliverReport(ctx, channel, recipients, name, data, artifact, filename, mime)
+	status, deliveryError := deliverReport(ctx, db, company, id, secret, channel, recipients, name, data, artifact, filename, mime)
 	finishReportRun(ctx, db, id, schedule, status, artifact, filename, mime, deliveryError)
 	return true
 }
@@ -450,7 +487,7 @@ func renderPDF(d reportData) []byte {
 	return b.Bytes()
 }
 
-func deliverReport(ctx context.Context, channel string, recipients []string, subject string, data reportData, artifact []byte, filename, mime string) (string, string) {
+func deliverReport(ctx context.Context, db *pgxpool.Pool, company, runID, secret, channel string, recipients []string, subject string, data reportData, artifact []byte, filename, mime string) (string, string) {
 	if len(recipients) == 0 {
 		return "skipped", "Получатели не указаны"
 	}
@@ -466,9 +503,79 @@ func deliverReport(ctx context.Context, channel string, recipients []string, sub
 		}
 		return "sent", ""
 	case "whatsapp":
-		return "skipped", "Для доставки отчётов WhatsApp нужен публичный URL медиа и одобренный шаблон"
+		appURL := strings.TrimRight(os.Getenv("APP_URL"), "/")
+		token := os.Getenv("WHATSAPP_ACCESS_TOKEN")
+		phoneID := os.Getenv("WHATSAPP_PHONE_NUMBER_ID")
+		if !strings.HasPrefix(appURL, "https://") || token == "" || phoneID == "" {
+			return "skipped", "Подключите WhatsApp и публичный HTTPS-адрес Tappix"
+		}
+		expires := strconv.FormatInt(time.Now().Add(7*24*time.Hour).Unix(), 10)
+		link := fmt.Sprintf("%s/api/v1/public/reports/%s?expires=%s&token=%s", appURL, runID, expires, reportArtifactToken([]byte(secret), runID, expires))
+		for _, recipient := range recipients {
+			phone := nonDigits.ReplaceAllString(recipient, "")
+			if len(phone) < 10 {
+				return "failed", "Некорректный номер WhatsApp"
+			}
+			payload, _ := json.Marshal(map[string]any{"messaging_product": "whatsapp", "recipient_type": "individual", "to": phone, "type": "document", "document": map[string]string{"link": link, "filename": filename, "caption": "Tappix: " + subject}})
+			url := fmt.Sprintf("https://graph.facebook.com/%s/%s/messages", envValue("WHATSAPP_GRAPH_VERSION", "v23.0"), phoneID)
+			request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+			if err != nil {
+				return "failed", err.Error()
+			}
+			request.Header.Set("Authorization", "Bearer "+token)
+			request.Header.Set("Content-Type", "application/json")
+			response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+			if err != nil {
+				return "failed", err.Error()
+			}
+			detail, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
+			response.Body.Close()
+			if response.StatusCode < 200 || response.StatusCode >= 300 {
+				return "failed", fmt.Sprintf("WhatsApp отклонил доставку: HTTP %d (%s)", response.StatusCode, strings.TrimSpace(string(detail)))
+			}
+		}
+		return "sent", ""
 	case "webhook":
-		return "skipped", "Webhook отчётов ещё не привязан к endpoint"
+		for _, endpointID := range recipients {
+			var target string
+			var encrypted []byte
+			err := db.QueryRow(ctx, `SELECT url,encrypted_secret FROM webhook_endpoints WHERE id=$2 AND company_id=$1 AND status='active'`, company, endpointID).Scan(&target, &encrypted)
+			if err != nil {
+				return "failed", "Webhook endpoint не найден или отключён"
+			}
+			if err = validateOutboundURL(ctx, target); err != nil {
+				return "failed", "Webhook endpoint недоступен"
+			}
+			webhookSecret, err := decryptIntegrationSecret(integrationEncryptionKey(secret), encrypted)
+			if err != nil {
+				return "failed", "Не удалось открыть секрет webhook"
+			}
+			payload, _ := json.Marshal(map[string]any{"event": "report.ready", "reportRunId": runID, "name": subject, "filename": filename, "mimeType": mime, "summary": reportPlainText(data)})
+			timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+			mac := hmac.New(sha256.New, webhookSecret)
+			_, _ = mac.Write([]byte(timestamp + "."))
+			_, _ = mac.Write(payload)
+			request, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
+			if err != nil {
+				return "failed", err.Error()
+			}
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("User-Agent", "Tappix-Reports/1.0")
+			request.Header.Set("X-Tappix-Event", "report.ready")
+			request.Header.Set("X-Tappix-Event-ID", runID)
+			request.Header.Set("X-Tappix-Timestamp", timestamp)
+			request.Header.Set("X-Tappix-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+			response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+			if err != nil {
+				return "failed", err.Error()
+			}
+			_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+			response.Body.Close()
+			if response.StatusCode < 200 || response.StatusCode >= 300 {
+				return "failed", fmt.Sprintf("Webhook вернул HTTP %d", response.StatusCode)
+			}
+		}
+		return "sent", ""
 	}
 	return "failed", "Неизвестный канал"
 }
@@ -535,10 +642,28 @@ func sendEmailAttachment(ctx context.Context, recipient, subject, body string, a
 }
 
 func finishReportRun(ctx context.Context, db *pgxpool.Pool, id, schedule, status string, artifact []byte, filename, mime, errorText string) {
+	if status == "failed" {
+		var attempts int
+		if db.QueryRow(ctx, `SELECT attempts FROM report_runs WHERE id=$1`, id).Scan(&attempts) == nil && attempts < 3 {
+			delay := reportRetryDelay(attempts)
+			_, retryErr := db.Exec(ctx, `UPDATE report_runs SET status='queued',artifact=$2,filename=nullif($3,''),mime_type=nullif($4,''),error=nullif($5,''),completed_at=NULL,next_attempt_at=now()+make_interval(secs=>$6) WHERE id=$1`, id, artifact, filename, mime, errorText, int(delay.Seconds()))
+			if retryErr == nil {
+				_, _ = db.Exec(ctx, `UPDATE report_schedules SET last_run_at=now(),last_status='queued',last_error=nullif($2,''),updated_at=now() WHERE id=$1`, schedule, errorText)
+				return
+			}
+		}
+	}
 	_, err := db.Exec(ctx, `UPDATE report_runs SET status=$2,artifact=$3,filename=nullif($4,''),mime_type=nullif($5,''),error=nullif($6,''),completed_at=now() WHERE id=$1`, id, status, artifact, filename, mime, errorText)
 	if err != nil {
 		slog.Error("report run update failed", "report_run_id", id, "error", err)
 		return
 	}
 	_, _ = db.Exec(ctx, `UPDATE report_schedules SET last_run_at=now(),last_status=$2,last_error=nullif($3,''),updated_at=now() WHERE id=$1`, schedule, status, errorText)
+}
+
+func reportRetryDelay(attempts int) time.Duration {
+	if attempts < 1 {
+		attempts = 1
+	}
+	return time.Duration(attempts) * time.Minute
 }
