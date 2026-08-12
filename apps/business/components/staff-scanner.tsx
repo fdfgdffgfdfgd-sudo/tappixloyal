@@ -24,8 +24,9 @@ export function StaffScanner(){
   async function stop(){if(scanner.current){await scanner.current.stop().catch(()=>undefined);scanner.current.clear();scanner.current=null}setScanning(false)}
   async function resolve(raw:string){
     if(resolvingLock.current)return;resolvingLock.current=true;setResolving(true);
-    const id=customerID(raw);
-    if(!id){setMessage("Это не QR-код клиента Tappix. Откройте QR на бонусной карте и попробуйте снова.");resolvingLock.current=false;setResolving(false);return}
+    let id=customerID(raw);
+    if(!id&&raw.trim().length>=2){try{const result=await api<{items:Customer[]}>(`/customers?search=${encodeURIComponent(raw.trim())}&limit=2`);if(result.items.length===1)id=result.items[0].id;else if(result.items.length>1){setMessage("Найдено несколько клиентов. Уточните телефон или отсканируйте QR.");resolvingLock.current=false;setResolving(false);return}}catch{}}
+    if(!id){setMessage("Клиент не найден. Введите полный телефон, имя или отсканируйте QR карты.");resolvingLock.current=false;setResolving(false);return}
     await stop();setMessage("");setSuccess(null);
     try{setCustomer(await api<Customer>(`/customers/${id}`))}catch(e){setMessage(e instanceof Error?e.message:"Клиент не найден")}finally{resolvingLock.current=false;setResolving(false)}
   }
@@ -44,6 +45,7 @@ export function StaffScanner(){
   function reset(){setCustomer(null);setSuccess(null);setMessage(branches.length?"":"Нет активного филиала. Попросите владельца включить филиал в настройках.");requestAnimationFrame(()=>manualInput.current?.focus())}
   function manual(e:FormEvent<HTMLFormElement>){e.preventDefault();const value=String(new FormData(e.currentTarget).get("code")||"");void resolve(value)}
   return <SectionShell active="/scanner" title="Сканер гостя" subtitle="Отметьте посещение за несколько секунд">
+    <section className="staff-mode-banner"><div><ShieldCheck/><span><small>STAFF MODE</small><strong>Только операции у кассы</strong></span></div><p>Нет доступа к аналитике, тарифам и массовым рассылкам.</p><b>{branchId?branches.find(item=>item.id===branchId)?.name:"Филиал не выбран"}</b></section>
     <ol className="scanner-steps" aria-label="Этапы отметки посещения"><li className={!customer?"current":"done"}><span>1</span>Сканирование</li><li className={customer&&!success?"current":success?"done":""}><span>2</span>Проверка гостя</li><li className={success?"current":""}><span>3</span>Готово</li></ol>
     <div className="scanner-layout">
       <section className="scanner-main">
@@ -52,7 +54,7 @@ export function StaffScanner(){
           {!scanning&&<div className="scanner-placeholder"><span>{resolving?<LoaderCircle className="spin"/>:<ScanLine/>}</span><h2>{resolving?"Проверяем карту…":"Наведите камеру на QR гостя"}</h2><p>{resolving?"Находим клиента и его актуальный баланс.":"QR находится на цифровой бонусной карте клиента."}</p><button type="button" disabled={resolving||branchesLoading||!branches.length} onClick={()=>void start()}><Camera/>Включить камеру</button></div>}
           {scanning&&<button type="button" className="stop-camera" onClick={()=>void stop()}><CameraOff/>Остановить</button>}
         </div>
-        <form className="scanner-manual" onSubmit={manual}><Keyboard/><label>Нет камеры?<input ref={manualInput} name="code" autoComplete="off" placeholder="Вставьте код из QR" required/></label><button disabled={resolving}>{resolving?"Проверяем…":"Найти"}</button></form>
+        <form className="scanner-manual" onSubmit={manual}><Keyboard/><label>Поиск без камеры<input ref={manualInput} name="code" autoComplete="off" placeholder="Телефон, имя или код QR" required/></label><button disabled={resolving}>{resolving?"Проверяем…":"Найти"}</button></form>
       </section>
       <aside className="scan-result">
         {!customer&&!message&&<div className="scan-empty"><UserRound/><strong>Здесь появится гость</strong><p>Проверьте имя и подтвердите посещение.</p></div>}

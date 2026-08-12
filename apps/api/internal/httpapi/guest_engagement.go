@@ -45,6 +45,10 @@ func (a *api) customerWallet(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "CUSTOMER_NOT_FOUND", "Карта не найдена")
 		return
 	}
+	var monetaryValue float64
+	var nextExpiry *time.Time
+	var expiringAmount int
+	_ = a.db.QueryRow(r.Context(), `SELECT coalesce(sum(CASE WHEN issued_amount>0 THEN monetary_value*remaining_amount/issued_amount ELSE 0 END),0),min(expires_at),coalesce(sum(remaining_amount) FILTER(WHERE expires_at<=now()+interval '30 days'),0)::integer FROM bonus_lots WHERE company_id=$1 AND customer_id=$2 AND status IN('pending','active') AND remaining_amount>0 AND (expires_at IS NULL OR expires_at>now())`, claims.CompanyID, claims.Subject).Scan(&monetaryValue, &nextExpiry, &expiringAmount)
 	achievements := []map[string]any{{"code": "joined", "title": "Участник клуба", "description": "Цифровая карта активирована", "unlocked": true}, {"code": "first_visit", "title": "Первое посещение", "description": "Первый шаг сделан", "unlocked": visits >= 1}, {"code": "regular", "title": "Постоянный клиент", "description": "5 посещений", "unlocked": visits >= 5}, {"code": "favorite", "title": "Любимый клиент", "description": "10 посещений", "unlocked": visits >= 10}, {"code": "vip", "title": "VIP", "description": "Уровень Platinum", "unlocked": points >= 2500}, {"code": "ambassador", "title": "Амбассадор", "description": "Приглашён первый друг", "unlocked": false}}
 	visitsTarget := 5
 	if visits >= 5 {
@@ -56,7 +60,7 @@ func (a *api) customerWallet(w http.ResponseWriter, r *http.Request) {
 	var lastSpin *time.Time
 	_ = a.db.QueryRow(r.Context(), `SELECT max(created_at) FROM customer_wheel_spins WHERE company_id=$1 AND customer_id=$2`, claims.CompanyID, claims.Subject).Scan(&lastSpin)
 	canSpin := lastSpin == nil || lastSpin.Before(time.Now().Add(-7*24*time.Hour))
-	write(w, 200, envelope{Success: true, Data: map[string]any{"level": levelProgress(points), "monthly": map[string]int{"visits": monthVisits, "earned": earned, "spent": spent, "savings": spent * 10}, "achievements": achievements, "nextReward": map[string]any{"title": fmt.Sprintf("Подарок за %d посещений", visitsTarget), "remaining": max(0, visitsTarget-visits), "target": visitsTarget}, "referralCode": referral, "referralUrl": fmt.Sprintf("%s/r/%s", envOr("APP_URL", "http://localhost:8088"), referral), "walletPassStatus": "planned", "wheel": map[string]any{"canSpin": canSpin, "lastSpin": lastSpin}}})
+	write(w, 200, envelope{Success: true, Data: map[string]any{"level": levelProgress(points), "monthly": map[string]int{"visits": monthVisits, "earned": earned, "spent": spent, "savings": spent * 10}, "bonusValue": monetaryValue, "bonusExpiry": map[string]any{"date": nextExpiry, "amount": expiringAmount}, "achievements": achievements, "nextReward": map[string]any{"title": fmt.Sprintf("Подарок за %d посещений", visitsTarget), "remaining": max(0, visitsTarget-visits), "target": visitsTarget}, "referralCode": referral, "referralUrl": fmt.Sprintf("%s/r/%s", envOr("APP_URL", "http://localhost:8088"), referral), "walletPassStatus": "planned", "wheel": map[string]any{"canSpin": canSpin, "lastSpin": lastSpin}}})
 }
 
 func (a *api) customerWheelSpin(w http.ResponseWriter, r *http.Request) {
