@@ -6,7 +6,7 @@ import { SectionShell } from "./section-shell";
 
 type Customer={id:string;firstName:string;lastName:string;phone?:string;phoneMasked?:string;totalPoints:number;totalVisits:number;level?:string};
 type RewardProgress={name:string;currentValue:number;targetValue:number;status:string};
-type Branch={id:string;name:string;address:string;isActive:boolean};
+type Branch={id:string;name:string;address:string;active:boolean};
 type VisitResult={id:string;pointsAdded:number;balance:number;totalVisits:number;reward?:string};
 
 function customerID(raw:string){
@@ -21,7 +21,7 @@ export function StaffScanner(){
   const [branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState(""),[customer,setCustomer]=useState<Customer|null>(null),[progress,setProgress]=useState<RewardProgress|null>(null),[message,setMessage]=useState(""),[scanning,setScanning]=useState(false),[saving,setSaving]=useState(false),[resolving,setResolving]=useState(false),[branchesLoading,setBranchesLoading]=useState(true),[success,setSuccess]=useState<VisitResult|null>(null),[confirming,setConfirming]=useState(false);
   const scanner=useRef<{stop:()=>Promise<void>;clear:()=>void}|null>(null);
   const resolvingLock=useRef(false),manualInput=useRef<HTMLInputElement>(null),confirmDialog=useRef<HTMLElement>(null);
-  useEffect(()=>{api<Branch[]>("/branches").then(items=>{const active=items.filter(x=>x.isActive);setBranches(active);setBranchId(active[0]?.id||"");if(!active.length)setMessage("Нет активного филиала. Попросите владельца включить филиал в настройках.")}).catch(e=>setMessage(e.message)).finally(()=>setBranchesLoading(false));return()=>{void scanner.current?.stop().catch(()=>undefined)}},[]);
+  useEffect(()=>{api<Branch[]>("/branches").then(items=>{const active=items.filter(x=>x.active);setBranches(active);setBranchId(active[0]?.id||"");if(!active.length)setMessage("Нет активного филиала. Попросите владельца включить филиал в настройках.")}).catch(e=>setMessage(e.message)).finally(()=>setBranchesLoading(false));return()=>{void scanner.current?.stop().catch(()=>undefined)}},[]);
   async function stop(){if(scanner.current){await scanner.current.stop().catch(()=>undefined);scanner.current.clear();scanner.current=null}setScanning(false)}
   async function resolve(raw:string){
     if(resolvingLock.current)return;resolvingLock.current=true;setResolving(true);

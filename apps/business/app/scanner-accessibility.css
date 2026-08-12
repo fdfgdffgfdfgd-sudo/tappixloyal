@@ -1,0 +1,13 @@
+.scanner-placeholder button:not(:disabled) {
+  background: #5145cd !important;
+  color: #fff !important;
+  opacity: 1 !important;
+  transition: none !important;
+}
+
+.scanner-manual button:not(:disabled) {
+  background: #5145cd !important;
+  color: #fff !important;
+  opacity: 1 !important;
+  transition: none !important;
+}
