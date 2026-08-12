@@ -39,8 +39,8 @@ func levelProgress(points int) map[string]any {
 func (a *api) customerWallet(w http.ResponseWriter, r *http.Request) {
 	claims, _ := r.Context().Value(identityKey).(tokenClaims)
 	var points, visits, monthVisits, earned, spent int
-	var referral string
-	err := a.db.QueryRow(r.Context(), `SELECT c.total_points,c.total_visits,coalesce(c.referral_code,''),(SELECT count(*) FROM visits v WHERE v.company_id=c.company_id AND v.customer_id=c.id AND date_trunc('month',v.created_at)=date_trunc('month',now())),(SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=c.company_id AND b.customer_id=c.id AND b.operation='credit' AND date_trunc('month',b.created_at)=date_trunc('month',now())),(SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=c.company_id AND b.customer_id=c.id AND b.operation='debit' AND date_trunc('month',b.created_at)=date_trunc('month',now())) FROM customers c WHERE c.company_id=$1 AND c.id=$2`, claims.CompanyID, claims.Subject).Scan(&points, &visits, &referral, &monthVisits, &earned, &spent)
+	var referral, customerCode string
+	err := a.db.QueryRow(r.Context(), `SELECT c.total_points,c.total_visits,coalesce(c.referral_code,''),c.customer_code,(SELECT count(*) FROM visits v WHERE v.company_id=c.company_id AND v.customer_id=c.id AND date_trunc('month',v.created_at)=date_trunc('month',now())),(SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=c.company_id AND b.customer_id=c.id AND b.operation='credit' AND date_trunc('month',b.created_at)=date_trunc('month',now())),(SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=c.company_id AND b.customer_id=c.id AND b.operation='debit' AND date_trunc('month',b.created_at)=date_trunc('month',now())) FROM customers c WHERE c.company_id=$1 AND c.id=$2`, claims.CompanyID, claims.Subject).Scan(&points, &visits, &referral, &customerCode, &monthVisits, &earned, &spent)
 	if err != nil {
 		fail(w, 404, "CUSTOMER_NOT_FOUND", "Карта не найдена")
 		return
@@ -60,7 +60,7 @@ func (a *api) customerWallet(w http.ResponseWriter, r *http.Request) {
 	var lastSpin *time.Time
 	_ = a.db.QueryRow(r.Context(), `SELECT max(created_at) FROM customer_wheel_spins WHERE company_id=$1 AND customer_id=$2`, claims.CompanyID, claims.Subject).Scan(&lastSpin)
 	canSpin := lastSpin == nil || lastSpin.Before(time.Now().Add(-7*24*time.Hour))
-	write(w, 200, envelope{Success: true, Data: map[string]any{"level": levelProgress(points), "monthly": map[string]int{"visits": monthVisits, "earned": earned, "spent": spent, "savings": spent * 10}, "bonusValue": monetaryValue, "bonusExpiry": map[string]any{"date": nextExpiry, "amount": expiringAmount}, "achievements": achievements, "nextReward": map[string]any{"title": fmt.Sprintf("Подарок за %d посещений", visitsTarget), "remaining": max(0, visitsTarget-visits), "target": visitsTarget}, "referralCode": referral, "referralUrl": fmt.Sprintf("%s/r/%s", envOr("APP_URL", "http://localhost:8088"), referral), "walletPassStatus": "planned", "wheel": map[string]any{"canSpin": canSpin, "lastSpin": lastSpin}}})
+	write(w, 200, envelope{Success: true, Data: map[string]any{"customerCode": customerCode, "level": levelProgress(points), "monthly": map[string]int{"visits": monthVisits, "earned": earned, "spent": spent, "savings": spent * 10}, "bonusValue": monetaryValue, "bonusExpiry": map[string]any{"date": nextExpiry, "amount": expiringAmount}, "achievements": achievements, "nextReward": map[string]any{"title": fmt.Sprintf("Подарок за %d посещений", visitsTarget), "remaining": max(0, visitsTarget-visits), "target": visitsTarget}, "referralCode": referral, "referralUrl": fmt.Sprintf("%s/r/%s", envOr("APP_URL", "http://localhost:8088"), referral), "walletPassStatus": "planned", "wheel": map[string]any{"canSpin": canSpin, "lastSpin": lastSpin}}})
 }
 
 func (a *api) customerWheelSpin(w http.ResponseWriter, r *http.Request) {
