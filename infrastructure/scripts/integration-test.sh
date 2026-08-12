@@ -69,12 +69,17 @@ customer_login=$(curl -fsS -c "$guest_cookies" -X POST "$API_URL/customer/login"
 printf '%s' "$customer_login" | jq -e '.data.authenticated == true and (.data.accessToken | not)' >/dev/null
 grep -q 'tappix_guest_access' "$guest_cookies"
 grep -q 'tappix_guest_refresh' "$guest_cookies"
+guest_csrf=$(awk '$6 == "tappix_guest_csrf" { print $7 }' "$guest_cookies")
+test -n "$guest_csrf"
 customer_profile=$(curl -fsS -b "$guest_cookies" "$API_URL/customer/me")
 curl -fsS -b "$guest_cookies" "$API_URL/customer/rewards" | jq -e '.data | type == "array"' >/dev/null
 profile_payload=$(printf '%s' "$customer_profile" | jq -c '{firstName:.data.firstName,lastName:.data.lastName,birthday:(.data.birthday // "" | .[0:10])}')
-curl -fsS -b "$guest_cookies" -X PATCH "$API_URL/customer/me" -H 'Content-Type: application/json' -d "$profile_payload" | jq -e '.data.updated == true' >/dev/null
-curl -fsS -b "$guest_cookies" -c "$guest_cookies" -X POST "$API_URL/auth/refresh?aud=guest" | jq -e '.success == true' >/dev/null
-curl -fsS -b "$guest_cookies" -c "$guest_cookies" -X POST "$API_URL/auth/logout?aud=guest" | jq -e '.data.loggedOut == true' >/dev/null
+csrf_rejected=$(curl -sS -o /dev/null -w '%{http_code}' -b "$guest_cookies" -X PATCH "$API_URL/customer/me" -H 'Content-Type: application/json' -d "$profile_payload")
+test "$csrf_rejected" = "403"
+curl -fsS -b "$guest_cookies" -X PATCH "$API_URL/customer/me" -H "X-CSRF-Token: $guest_csrf" -H 'Content-Type: application/json' -d "$profile_payload" | jq -e '.data.updated == true' >/dev/null
+curl -fsS -b "$guest_cookies" -c "$guest_cookies" -H "X-CSRF-Token: $guest_csrf" -X POST "$API_URL/auth/refresh?aud=guest" | jq -e '.success == true' >/dev/null
+guest_csrf=$(awk '$6 == "tappix_guest_csrf" { print $7 }' "$guest_cookies")
+curl -fsS -b "$guest_cookies" -c "$guest_cookies" -H "X-CSRF-Token: $guest_csrf" -X POST "$API_URL/auth/logout?aud=guest" | jq -e '.data.loggedOut == true' >/dev/null
 guest_logged_out=$(curl -sS -o /dev/null -w '%{http_code}' -b "$guest_cookies" "$API_URL/customer/me")
 test "$guest_logged_out" = "401"
 

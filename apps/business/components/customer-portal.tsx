@@ -3,11 +3,12 @@ import { FormEvent, useEffect, useState } from "react";
 import { Check, ChevronRight, Clock3, Gift, Sparkles, Star, WalletCards } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { csrfHeaders } from "@/lib/csrf";
 const base=process.env.NEXT_PUBLIC_API_URL??"http://localhost:8080/api/v1";
 type PortalConfig={welcomeTitle?:string;welcomeText?:string;primaryColor?:string;backgroundUrl?:string;logoUrl?:string;requireEmail?:boolean;requireCity?:boolean;showGender?:boolean;promotionsEnabled?:boolean;promotionTitle?:string;promotionText?:string;referralBonus?:number;whatsapp?:string;instagram?:string;website?:string;mapUrl?:string};
 type PublicPortal={companyId:string;company:string;slug:string;logoUrl:string;phone:string;address:string;welcomeBonus:number;portal:PortalConfig};
 function BrandMark({name,logo}:{name:string;logo?:string}){return <div className="guest-brand">{logo?<Image src={logo} alt={`Логотип ${name}`} width={38} height={38} unoptimized/>:<span>{name.slice(0,1).toUpperCase()}</span>}<strong>{name}</strong></div>}
-const guestFetch=(url:string,init?:RequestInit)=>fetch(url,{...init,credentials:"include"});
+const guestFetch=(url:string,init?:RequestInit)=>fetch(url,{...init,credentials:"include",headers:{...csrfHeaders("guest"),...init?.headers}});
 
 export function JoinPortal({token}:{token:string}){
  const router=useRouter();const[data,setData]=useState<PublicPortal|null>(null),[stage,setStage]=useState<"intro"|"form"|"success">("intro"),[msg,setMsg]=useState(""),[busy,setBusy]=useState(false),[bonus,setBonus]=useState(0);

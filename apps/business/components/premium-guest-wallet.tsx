@@ -2,11 +2,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, Copy, Gift, History, Home, LockKeyhole, LogOut, MessageCircle, MoreHorizontal, QrCode, Share2, ShieldCheck, Sparkles, Trophy, WalletCards, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { csrfHeaders } from "@/lib/csrf";
 const base=process.env.NEXT_PUBLIC_API_URL??"http://localhost:8080/api/v1";
 type Profile={id:string;firstName:string;lastName:string;phone:string;points:number;visits:number;level:string;company:string;companySlug:string;logoUrl:string;portal:{primaryColor?:string;secondaryColor?:string;themeMode?:string;loyaltyMode?:string;stampsTarget?:number;stampReward?:string;discountStart?:number;discountStep?:number;discountMax?:number;visitsPerStep?:number;referralBonus?:number}};
 type Entry={operation:string;amount:number;balanceAfter:number;description:string;createdAt:string};
 type Wallet={customerCode:string;level:{current:string;next:string;progress:number;remaining:number;nextMin:number};bonusValue:number;bonusExpiry:{date?:string;amount:number};nextReward:{title:string;remaining:number;target:number};referralCode:string;referralUrl:string};
-const guestFetch=(url:string,init?:RequestInit)=>fetch(url,{...init,credentials:"include"});
+const guestFetch=(url:string,init?:RequestInit)=>fetch(url,{...init,credentials:"include",headers:{...csrfHeaders("guest"),...init?.headers}});
 
 export function PremiumGuestWallet(){
  const[profile,setProfile]=useState<Profile|null>(null),[wallet,setWallet]=useState<Wallet|null>(null),[history,setHistory]=useState<Entry[]>([]),[authenticated,setAuthenticated]=useState(false),[mode,setMode]=useState<"whatsapp"|"code"|"pin">("whatsapp"),[identity,setIdentity]=useState({company:"dentline",phone:""}),[devCode,setDevCode]=useState(""),[message,setMessage]=useState(""),[initializing,setInitializing]=useState(true),[tab,setTab]=useState<"home"|"rewards"|"history">("home"),[cashierOpen,setCashierOpen]=useState(false),[menuOpen,setMenuOpen]=useState(false);
