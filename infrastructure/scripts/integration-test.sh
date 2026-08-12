@@ -8,6 +8,7 @@ login=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/js
 token=$(printf '%s' "$login" | jq -r '.data.accessToken')
 test -n "$token"
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/dashboard" | jq -e '.data.repeatCustomers >= 0 and .data.rewardsIssued >= 0 and (.data.latestCustomers | type == "array")' >/dev/null
+curl -fsS "${API_URL%/api/v1}/metrics" | grep -q 'tappix_http_requests_total'
 
 assert_get_json() {
 	label=$1

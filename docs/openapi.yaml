@@ -107,6 +107,24 @@ paths:
     get:
       summary: Registration M0-Mn or first-purchase W0-Wn retention cohorts with attribution filters
       responses: {'200': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /reports/schedules:
+    get: {summary: List tenant report schedules, responses: {'200': {$ref: '#/components/responses/Success'}}}
+    post:
+      summary: Create an audited owner report schedule
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReportScheduleInput'}}}}
+      responses: {'201': {$ref: '#/components/responses/Success'}, '422': {$ref: '#/components/responses/Error'}}
+  /reports/schedules/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    patch: {summary: Update a tenant report schedule, responses: {'200': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}}}
+    delete: {summary: Delete a tenant report schedule and its runs, responses: {'200': {$ref: '#/components/responses/Success'}, '404': {$ref: '#/components/responses/Error'}}}
+  /reports/schedules/{id}/run:
+    post: {summary: Queue an idempotent manual report run, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'202': {$ref: '#/components/responses/Success'}}}
+  /reports/runs:
+    get: {summary: List report delivery attempts and statuses, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /reports/runs/{id}/retry:
+    post: {summary: Queue a new audited delivery attempt, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'202': {$ref: '#/components/responses/Success'}}}
+  /reports/runs/{id}/download:
+    get: {summary: Download a generated CSV, XLSX, PDF or summary artifact, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: Report artifact}, '404': {$ref: '#/components/responses/Error'}}}
   /loyalty/expire-bonuses:
     post:
       summary: Force expiration of due bonus lots
@@ -256,6 +274,11 @@ paths:
     post: {security: [], summary: Customer PIN login, responses: {'200': {$ref: '#/components/responses/Success'}}}
   /customer/me:
     get: {summary: Customer cabinet profile, responses: {'200': {$ref: '#/components/responses/Success'}}}
+  /customer/wallet:
+    get:
+      summary: Canonical customer loyalty state, branding, progress and cashier code
+      description: Frontend displays the returned progress, remaining, eligibility, reward and monetary balance without recalculating loyalty rules.
+      responses: {'200': {$ref: '#/components/responses/Success'}}
   /admin/dashboard:
     get: {summary: Platform dashboard, responses: {'200': {$ref: '#/components/responses/Success'}}}
   /admin/companies:
@@ -286,6 +309,21 @@ components:
         segment: {type: string, enum: [all, inactive, birthday, level]}
         inactiveDays: {type: integer, minimum: 1, default: 30}
         level: {type: string, enum: [basic, silver, gold, vip]}
+    ReportScheduleInput:
+      type: object
+      required: [name, channel, recipients, frequency, timezone, sendHour, format]
+      properties:
+        name: {type: string, maxLength: 160}
+        reportType: {type: string, default: owner_summary}
+        channel: {type: string, enum: [email, whatsapp, webhook]}
+        recipients: {type: array, minItems: 1, items: {type: string}}
+        frequency: {type: string, enum: [daily, weekly, monthly]}
+        timezone: {type: string, example: Asia/Almaty}
+        sendHour: {type: integer, minimum: 0, maximum: 23}
+        sendWeekday: {type: integer, minimum: 1, maximum: 7}
+        sendMonthday: {type: integer, minimum: 1, maximum: 28}
+        format: {type: string, enum: [summary, csv, xlsx, pdf]}
+        active: {type: boolean, default: true}
     Envelope:
       type: object
       required: [success]

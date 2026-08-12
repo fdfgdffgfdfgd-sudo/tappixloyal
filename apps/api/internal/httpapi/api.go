@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -68,6 +68,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	a := &api{db: db, redis: redisClient, jwtSecret: []byte(jwtSecret), whatsappToken: os.Getenv("WHATSAPP_ACCESS_TOKEN"), whatsappPhoneID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"), whatsappTemplate: envOr("WHATSAPP_OTP_TEMPLATE", "tappix_login_code"), whatsappGraphVersion: envOr("WHATSAPP_GRAPH_VERSION", "v23.0"), otpDevMode: os.Getenv("OTP_DEV_MODE") == "true", integrationService: posintegration.NewService(db), integrationKey: integrationEncryptionKey(jwtSecret)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.health)
+	mux.HandleFunc("GET /metrics", a.metrics)
 	mux.HandleFunc("POST /api/v1/auth/login", a.login)
 	mux.HandleFunc("POST /api/v1/auth/refresh", a.refresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", a.logout)
@@ -235,7 +236,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("POST /api/v1/partnerships/{id}/offers", a.requireModule("partnerships", a.requirePermission("partnerships.manage", http.HandlerFunc(a.createPartnershipOffer))))
 	protected.Handle("POST /api/v1/partnership-offers/redeem", a.requireModule("partnerships", a.requirePermission("partnerships.manage", http.HandlerFunc(a.redeemPartnershipOffer))))
 	mux.Handle("/api/v1/", a.authenticate(a.requireWritableSubscription(a.auditMutations(protected))))
-	return recoverer(cors(requestID(a.rateLimit(csrfProtection(mux)))))
+	return recoverer(cors(requestID(a.observe(a.rateLimit(csrfProtection(mux))))))
 }
 
 func (a *api) health(w http.ResponseWriter, r *http.Request) {
@@ -462,7 +463,7 @@ func (a *api) createVisit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		log.Printf("create visit transaction failed: %v", err)
+		slog.Error("loyalty.visit.failed", "event_type", "loyalty.visit.failed", "tenant_id", tenant, "actor_id", identity(r).Subject, "customer_id", in.CustomerID, "request_id", r.Header.Get("X-Request-ID"), "error", err)
 		fail(w, 500, "VISIT_FAILED", "Не удалось добавить посещение")
 		return
 	}
@@ -470,6 +471,7 @@ func (a *api) createVisit(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "VISIT_FAILED", "Не удалось сохранить посещение")
 		return
 	}
+	logDomainEvent(r, "loyalty.visit.recorded", in.CustomerID, "visit_id", visitID, "branch_id", in.BranchID, "points_added", points)
 	write(w, 201, envelope{Success: true, Data: map[string]any{"id": visitID, "pointsAdded": points, "balance": balance + points, "totalVisits": visits + 1, "reward": rewardName}})
 }
 

@@ -490,6 +490,9 @@ func sendEmailAttachment(ctx context.Context, recipient, subject, body string, a
 		return err
 	}
 	defer client.Close()
+	if err = configureSMTPClient(client, host); err != nil {
+		return err
+	}
 	from := fromAddress(envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>"))
 	if err = client.Mail(from); err != nil {
 		return err

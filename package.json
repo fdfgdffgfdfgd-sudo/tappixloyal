@@ -14,6 +14,7 @@
     "stack:up": "docker compose up -d --build",
     "stack:down": "docker compose down",
     "db:backup": "sh infrastructure/scripts/backup-postgres.sh",
+    "db:verify-backup": "sh infrastructure/scripts/verify-backup.sh",
     "test:integration": "sh infrastructure/scripts/integration-test.sh",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",

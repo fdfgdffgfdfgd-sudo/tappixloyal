@@ -12,4 +12,5 @@ if [ "${CONFIRM_RESTORE:-}" != "tappix" ]; then
 fi
 database="${POSTGRES_DB:-tappix}"
 username="${POSTGRES_USER:-tappix}"
+printf 'Restore target database: %s\nBackup archive: %s\nBackup timestamp: %s\n' "$database" "$archive" "$(basename "$archive" | sed -n 's/^tappix-\(.*\)\.sql\.gz$/\1/p')"
 gzip -dc "$archive" | docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$username" "$database"

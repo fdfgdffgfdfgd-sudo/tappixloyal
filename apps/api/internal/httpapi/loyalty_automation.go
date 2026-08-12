@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/smtp"
+	"os"
 	"strings"
 	"time"
 
@@ -251,6 +253,9 @@ func sendEmailWithTimeout(ctx context.Context, recipient, subject, message strin
 		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer client.Close()
+	if err = configureSMTPClient(client, host); err != nil {
+		return err
+	}
 	from := fromAddress(envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>"))
 	if err = client.Mail(from); err != nil {
 		return fmt.Errorf("smtp sender: %w", err)
@@ -273,6 +278,24 @@ func sendEmailWithTimeout(ctx context.Context, recipient, subject, message strin
 	}
 	if err = client.Quit(); err != nil {
 		return fmt.Errorf("smtp quit: %w", err)
+	}
+	return nil
+}
+
+func configureSMTPClient(client *smtp.Client, host string) error {
+	requireTLS := strings.EqualFold(envValue("SMTP_TLS", "false"), "true")
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+			return fmt.Errorf("smtp tls: %w", err)
+		}
+	} else if requireTLS {
+		return fmt.Errorf("smtp tls: server does not offer STARTTLS")
+	}
+	username := strings.TrimSpace(os.Getenv("SMTP_USERNAME"))
+	if username != "" {
+		if err := client.Auth(smtp.PlainAuth("", username, os.Getenv("SMTP_PASSWORD"), host)); err != nil {
+			return fmt.Errorf("smtp auth: %w", err)
+		}
 	}
 	return nil
 }

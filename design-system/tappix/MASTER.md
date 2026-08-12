@@ -101,6 +101,7 @@ Controls:
 - Success: краткий `aria-live` toast/status.
 - Paid module: `available`, `configured`, `connected`, `locked`, `failed`.
 - Expired subscription: read-only state, backend остаётся source of truth.
+- Reports: schedule показывает следующую и последнюю отправку человеческими датами; run различает queued/processing/sent/skipped/failed, разрешает скачать готовый файл и повторить ошибку без показа job ID.
 
 ## Accessibility and motion
 
