@@ -34,6 +34,7 @@ func (a *api) customerByCode(w http.ResponseWriter, r *http.Request) {
 		entityID = nil
 	}
 	_, _ = a.db.Exec(r.Context(), `INSERT INTO audit_logs(company_id,actor_id,action,entity_type,entity_id,ip,user_agent,after_data) VALUES($1,$2,'customer.code_lookup','customer',$3,$4,$5,jsonb_build_object('outcome',$6::text))`, claims.CompanyID, claims.Subject, entityID, host, r.UserAgent(), outcome)
+	logDomainEvent(r, "staff.customer.lookup", id, "outcome", outcome)
 	if err != nil {
 		fail(w, 404, "CUSTOMER_NOT_FOUND", "Клиент с таким кодом не найден")
 		return

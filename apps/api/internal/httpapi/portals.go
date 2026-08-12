@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -107,7 +108,13 @@ func (a *api) customerRegister(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if err != nil || tx.Commit(r.Context()) != nil {
+	if err != nil {
+		slog.Error("customer.registration.failed", "event_type", "customer.registration.failed", "tenant_id", company, "request_id", r.Header.Get("X-Request-ID"), "error", err)
+		fail(w, 500, "REGISTRATION_FAILED", "Не удалось зарегистрироваться")
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		slog.Error("customer.registration.commit_failed", "event_type", "customer.registration.commit_failed", "tenant_id", company, "request_id", r.Header.Get("X-Request-ID"), "error", err)
 		fail(w, 500, "REGISTRATION_FAILED", "Не удалось зарегистрироваться")
 		return
 	}
@@ -186,11 +193,54 @@ func (a *api) updateGuestPortalSettings(w http.ResponseWriter, r *http.Request) 
 	if !decode(w, r, &in) {
 		return
 	}
-	_, err := a.db.Exec(r.Context(), `INSERT INTO company_settings(company_id,branding) VALUES($1,jsonb_build_object('guestPortal',$2::jsonb)) ON CONFLICT(company_id) DO UPDATE SET branding=company_settings.branding || jsonb_build_object('guestPortal',$2::jsonb),updated_at=now()`, companyID(r), in)
+	mode, _ := in["loyaltyMode"].(string)
+	target := intConfig(in, "stampsTarget", 6)
+	reward := strings.TrimSpace(stringConfig(in, "stampReward", "Подарок"))
+	if mode != "points" && mode != "stamps" && mode != "discount" {
+		fail(w, 422, "VALIDATION_ERROR", "Выберите тип программы")
+		return
+	}
+	if mode == "stamps" && (target < 2 || target > 30 || reward == "") {
+		fail(w, 422, "VALIDATION_ERROR", "Укажите награду и порог от 2 до 30 посещений")
+		return
+	}
+	tx, err := a.db.Begin(r.Context())
 	if err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось начать публикацию")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var definitionID, ruleID *string
+	_ = tx.QueryRow(r.Context(), `SELECT loyalty_reward_definition_id,loyalty_reward_rule_id FROM company_settings WHERE company_id=$1 FOR UPDATE`, companyID(r)).Scan(&definitionID, &ruleID)
+	if mode == "stamps" {
+		if definitionID == nil {
+			var id string
+			err = tx.QueryRow(r.Context(), `INSERT INTO reward_definitions(company_id,name,description,reward_type,validity_days,repeatable,confirmation_method,is_active,created_by) VALUES($1,$2,'Награда основной программы посещений','gift',90,true,'staff',true,$3) RETURNING id`, companyID(r), reward, identity(r).Subject).Scan(&id)
+			definitionID = &id
+		} else {
+			_, err = tx.Exec(r.Context(), `UPDATE reward_definitions SET name=$3,is_active=true,deleted_at=NULL,updated_at=now() WHERE company_id=$1 AND id=$2`, companyID(r), *definitionID, reward)
+		}
+		if err == nil {
+			if ruleID == nil {
+				var id string
+				err = tx.QueryRow(r.Context(), `INSERT INTO reward_rules(company_id,definition_id,event_type,threshold,progress_mode,priority,is_active) VALUES($1,$2,'visit_created',$3,'repeat',10,true) RETURNING id`, companyID(r), *definitionID, target).Scan(&id)
+				ruleID = &id
+			} else {
+				_, err = tx.Exec(r.Context(), `UPDATE reward_rules SET definition_id=$3,threshold=$4,progress_mode='repeat',is_active=true,updated_at=now() WHERE company_id=$1 AND id=$2`, companyID(r), *ruleID, *definitionID, target)
+			}
+		}
+	} else if ruleID != nil {
+		_, err = tx.Exec(r.Context(), `UPDATE reward_rules SET is_active=false,updated_at=now() WHERE company_id=$1 AND id=$2`, companyID(r), *ruleID)
+	}
+	if err == nil {
+		_, err = tx.Exec(r.Context(), `INSERT INTO company_settings(company_id,branding,loyalty_reward_definition_id,loyalty_reward_rule_id) VALUES($1,jsonb_build_object('guestPortal',$2::jsonb),$3,$4) ON CONFLICT(company_id) DO UPDATE SET branding=company_settings.branding || jsonb_build_object('guestPortal',$2::jsonb),loyalty_reward_definition_id=$3,loyalty_reward_rule_id=$4,updated_at=now()`, companyID(r), in, definitionID, ruleID)
+	}
+	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось сохранить Guest Portal")
 		return
 	}
+	_, _ = a.db.Exec(r.Context(), `INSERT INTO audit_logs(company_id,actor_id,action,entity_type,entity_id,request_id,after_data) VALUES($1,$2,'loyalty.program.published','loyalty_program',$1,$3,jsonb_build_object('mode',$4::text,'target',$5::integer,'reward',$6::text))`, companyID(r), identity(r).Subject, r.Header.Get("X-Request-ID"), mode, target, reward)
+	logDomainEvent(r, "loyalty.program.published", "", "mode", mode, "target", target)
 	write(w, 200, envelope{Success: true, Data: in})
 }
 func (a *api) updateCustomerProfile(w http.ResponseWriter, r *http.Request) {

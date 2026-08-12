@@ -480,7 +480,7 @@ func restoreBonusLots(ctx context.Context, tx pgx.Tx, companyID, customerID, ori
 	if left > 0 {
 		// Legacy transactions may predate allocation tracking; preserve the restored obligation as its own lot.
 		_, err = tx.Exec(ctx, `INSERT INTO bonus_lots(company_id,customer_id,source_ledger_id,source_transaction_id,issued_amount,remaining_amount,monetary_value,issued_at,activates_at,status,metadata)
-			VALUES($1,$2,$3,$4,$5,$5,$5,now(),now(),'active',jsonb_build_object('restoredFromTransaction',$6::text))`, companyID, customerID, restoreLedgerID, refundTransactionID, left, originalTransactionID)
+			VALUES($1,$2,$3,$4,$5::integer,$5::integer,$5::numeric,now(),now(),'active',jsonb_build_object('restoredFromTransaction',$6::text))`, companyID, customerID, restoreLedgerID, refundTransactionID, left, originalTransactionID)
 	}
 	return err
 }
@@ -591,7 +591,7 @@ func applyLoyalty(ctx context.Context, tx pgx.Tx, in CanonicalTransaction, trans
 
 func IssueBonusLot(ctx context.Context, tx pgx.Tx, companyID, customerID, creditLedgerID, transactionID string, amount int) error {
 	_, err := tx.Exec(ctx, `INSERT INTO bonus_lots(company_id,customer_id,source_ledger_id,source_transaction_id,issued_amount,remaining_amount,monetary_value,issued_at,activates_at,status)
-		VALUES($1,$2,$3,nullif($4,'')::uuid,$5,$5,$5,now(),now(),'active')`, companyID, customerID, creditLedgerID, transactionID, amount)
+		VALUES($1,$2,$3,nullif($4,'')::uuid,$5::integer,$5::integer,$5::numeric,now(),now(),'active')`, companyID, customerID, creditLedgerID, transactionID, amount)
 	return err
 }
 

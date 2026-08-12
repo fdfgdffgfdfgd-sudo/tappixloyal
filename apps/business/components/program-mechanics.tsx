@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Coins, Eye, Gift, Minus, Percent, Plus, QrCode, Save, Stamp, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { useDialogFocusTrap } from "./use-dialog-focus-trap";
 
 type Mode="points"|"stamps"|"discount";
 type Settings={loyaltyMode:Mode;stampsTarget:number;stampReward:string;discountStart:number;discountStep:number;discountMax:number;visitsPerStep:number;primaryColor?:string;[key:string]:unknown};
@@ -13,9 +14,9 @@ const modes=[
 ];
 export function ProgramMechanics(){
   const [value,setValue]=useState<Settings>(defaults),[saving,setSaving]=useState(false),[message,setMessage]=useState(""),[previewOpen,setPreviewOpen]=useState(false),[publishOpen,setPublishOpen]=useState(false),[dirty,setDirty]=useState(false);
-  const closeButton=useRef<HTMLButtonElement>(null);
+  const previewDialog=useDialogFocusTrap<HTMLElement>(previewOpen,()=>setPreviewOpen(false));
+  const publishDialog=useDialogFocusTrap<HTMLElement>(publishOpen,()=>setPublishOpen(false));
   useEffect(()=>{api<Partial<Settings>>( "/settings/guest-portal").then(x=>setValue({...defaults,...x})).catch(e=>setMessage(e.message))},[]);
-  useEffect(()=>{if(!previewOpen&&!publishOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape"){setPreviewOpen(false);setPublishOpen(false)}};window.addEventListener("keydown",onKey);requestAnimationFrame(()=>closeButton.current?.focus());return()=>window.removeEventListener("keydown",onKey)},[previewOpen,publishOpen]);
   function update(patch:Partial<Settings>){setValue(current=>({...current,...patch}));setDirty(true);setMessage("")}
   async function save(){setSaving(true);setMessage("");try{await api("/settings/guest-portal",{method:"PATCH",body:JSON.stringify(value)});setMessage("Программа обновлена");setDirty(false);setPublishOpen(false)}catch(e){setMessage(e instanceof Error?e.message:"Не удалось опубликовать программу")}finally{setSaving(false)}}
   const accent=value.primaryColor||"#6352ee";
@@ -31,7 +32,7 @@ export function ProgramMechanics(){
       </div>
       <div className="mechanics-action"><button type="button" className="mechanics-preview-button" onClick={()=>setPreviewOpen(true)}><Eye/>Посмотреть глазами клиента</button><span>{dirty?"Есть неопубликованные изменения":"Все изменения опубликованы"}</span><button className="mechanics-save" disabled={saving||!dirty} onClick={()=>setPublishOpen(true)}><Save/>Опубликовать</button></div>
     </div>
-    {previewOpen&&<div className="program-dialog-bg" onMouseDown={e=>{if(e.target===e.currentTarget)setPreviewOpen(false)}}><section className="program-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="program-preview-title"><header><div><small>ПРЕДПРОСМОТР</small><h2 id="program-preview-title">Глазами клиента</h2></div><button ref={closeButton} type="button" onClick={()=>setPreviewOpen(false)} aria-label="Закрыть"><X/></button></header>{card}<p><Check/>Демонстрация: реальный баланс и имя будут индивидуальными.</p></section></div>}
-    {publishOpen&&<div className="program-dialog-bg" onMouseDown={e=>{if(e.target===e.currentTarget)setPublishOpen(false)}}><section className="program-publish-dialog" role="dialog" aria-modal="true" aria-labelledby="program-publish-title"><header><div><small>ПРОВЕРЬТЕ ПЕРЕД ЗАПУСКОМ</small><h2 id="program-publish-title">Вы запускаете программу</h2></div><button ref={closeButton} type="button" onClick={()=>setPublishOpen(false)} aria-label="Закрыть"><X/></button></header><dl><div><dt>Тип программы</dt><dd>{modes.find(x=>x.id===value.loyaltyMode)?.title}</dd></div>{value.loyaltyMode==="stamps"&&<><div><dt>После</dt><dd>{value.stampsTarget} посещений</dd></div><div><dt>Клиент получает</dt><dd>{value.stampReward||"Награда не указана"}</dd></div><div><dt>После награды</dt><dd>Карта начинается заново</dd></div></>}</dl><footer><button type="button" onClick={()=>setPublishOpen(false)}>Вернуться к настройке</button><button type="button" className="primary" disabled={saving||value.loyaltyMode==="stamps"&&!value.stampReward.trim()} onClick={()=>void save()}>{saving?"Запускаем…":"Запустить программу"}</button></footer></section></div>}
+    {previewOpen&&<div className="program-dialog-bg" onMouseDown={e=>{if(e.target===e.currentTarget)setPreviewOpen(false)}}><section ref={previewDialog} className="program-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="program-preview-title"><header><div><small>ПРЕДПРОСМОТР</small><h2 id="program-preview-title">Глазами клиента</h2></div><button type="button" onClick={()=>setPreviewOpen(false)} aria-label="Закрыть"><X/></button></header>{card}<p><Check/>Демонстрация: реальный баланс и имя будут индивидуальными.</p></section></div>}
+    {publishOpen&&<div className="program-dialog-bg" onMouseDown={e=>{if(e.target===e.currentTarget)setPublishOpen(false)}}><section ref={publishDialog} className="program-publish-dialog" role="dialog" aria-modal="true" aria-labelledby="program-publish-title"><header><div><small>ПРОВЕРЬТЕ ПЕРЕД ЗАПУСКОМ</small><h2 id="program-publish-title">Вы запускаете программу</h2></div><button type="button" onClick={()=>setPublishOpen(false)} aria-label="Закрыть"><X/></button></header><dl><div><dt>Тип программы</dt><dd>{modes.find(x=>x.id===value.loyaltyMode)?.title}</dd></div>{value.loyaltyMode==="stamps"&&<><div><dt>После</dt><dd>{value.stampsTarget} посещений</dd></div><div><dt>Клиент получает</dt><dd>{value.stampReward||"Награда не указана"}</dd></div><div><dt>После награды</dt><dd>Карта начинается заново</dd></div></>}</dl><footer><button type="button" onClick={()=>setPublishOpen(false)}>Вернуться к настройке</button><button type="button" className="primary" disabled={saving||value.loyaltyMode==="stamps"&&!value.stampReward.trim()} onClick={()=>void save()}>{saving?"Запускаем…":"Запустить программу"}</button></footer></section></div>}
   </section>
 }

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -40,7 +41,8 @@ func (a *api) customerWallet(w http.ResponseWriter, r *http.Request) {
 	claims, _ := r.Context().Value(identityKey).(tokenClaims)
 	var points, visits, monthVisits, earned, spent int
 	var referral, customerCode string
-	err := a.db.QueryRow(r.Context(), `SELECT c.total_points,c.total_visits,coalesce(c.referral_code,''),c.customer_code,(SELECT count(*) FROM visits v WHERE v.company_id=c.company_id AND v.customer_id=c.id AND date_trunc('month',v.created_at)=date_trunc('month',now())),(SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=c.company_id AND b.customer_id=c.id AND b.operation='credit' AND date_trunc('month',b.created_at)=date_trunc('month',now())),(SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=c.company_id AND b.customer_id=c.id AND b.operation='debit' AND date_trunc('month',b.created_at)=date_trunc('month',now())) FROM customers c WHERE c.company_id=$1 AND c.id=$2`, claims.CompanyID, claims.Subject).Scan(&points, &visits, &referral, &customerCode, &monthVisits, &earned, &spent)
+	var brandingRaw []byte
+	err := a.db.QueryRow(r.Context(), `SELECT c.total_points,c.total_visits,coalesce(c.referral_code,''),c.customer_code,(SELECT count(*) FROM visits v WHERE v.company_id=c.company_id AND v.customer_id=c.id AND date_trunc('month',v.created_at)=date_trunc('month',now())),(SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=c.company_id AND b.customer_id=c.id AND b.operation='credit' AND date_trunc('month',b.created_at)=date_trunc('month',now())),(SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=c.company_id AND b.customer_id=c.id AND b.operation='debit' AND date_trunc('month',b.created_at)=date_trunc('month',now())),coalesce(cs.branding,'{}'::jsonb) FROM customers c LEFT JOIN company_settings cs ON cs.company_id=c.company_id WHERE c.company_id=$1 AND c.id=$2`, claims.CompanyID, claims.Subject).Scan(&points, &visits, &referral, &customerCode, &monthVisits, &earned, &spent, &brandingRaw)
 	if err != nil {
 		fail(w, 404, "CUSTOMER_NOT_FOUND", "Карта не найдена")
 		return
@@ -60,7 +62,50 @@ func (a *api) customerWallet(w http.ResponseWriter, r *http.Request) {
 	var lastSpin *time.Time
 	_ = a.db.QueryRow(r.Context(), `SELECT max(created_at) FROM customer_wheel_spins WHERE company_id=$1 AND customer_id=$2`, claims.CompanyID, claims.Subject).Scan(&lastSpin)
 	canSpin := lastSpin == nil || lastSpin.Before(time.Now().Add(-7*24*time.Hour))
-	write(w, 200, envelope{Success: true, Data: map[string]any{"customerCode": customerCode, "level": levelProgress(points), "monthly": map[string]int{"visits": monthVisits, "earned": earned, "spent": spent, "savings": spent * 10}, "bonusValue": monetaryValue, "bonusExpiry": map[string]any{"date": nextExpiry, "amount": expiringAmount}, "achievements": achievements, "nextReward": map[string]any{"title": fmt.Sprintf("Подарок за %d посещений", visitsTarget), "remaining": max(0, visitsTarget-visits), "target": visitsTarget}, "referralCode": referral, "referralUrl": fmt.Sprintf("%s/r/%s", envOr("APP_URL", "http://localhost:8088"), referral), "walletPassStatus": "planned", "wheel": map[string]any{"canSpin": canSpin, "lastSpin": lastSpin}}})
+	branding := map[string]any{}
+	_ = json.Unmarshal(brandingRaw, &branding)
+	portal := branding
+	if configured, ok := branding["guestPortal"].(map[string]any); ok {
+		portal = configured
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]any{"customerCode": customerCode, "level": levelProgress(points), "loyalty": canonicalLoyaltyState(portal, points, visits, monetaryValue), "monthly": map[string]int{"visits": monthVisits, "earned": earned, "spent": spent, "savings": spent * 10}, "bonusValue": monetaryValue, "bonusExpiry": map[string]any{"date": nextExpiry, "amount": expiringAmount}, "achievements": achievements, "nextReward": map[string]any{"title": fmt.Sprintf("Подарок за %d посещений", visitsTarget), "remaining": max(0, visitsTarget-visits), "target": visitsTarget}, "referralCode": referral, "referralUrl": fmt.Sprintf("%s/r/%s", envOr("APP_URL", "http://localhost:8088"), referral), "walletPassStatus": "planned", "wheel": map[string]any{"canSpin": canSpin, "lastSpin": lastSpin}}})
+}
+
+func canonicalLoyaltyState(config map[string]any, points, visits int, monetaryValue float64) map[string]any {
+	mode := stringConfig(config, "loyaltyMode", "points")
+	target := max(2, intConfig(config, "stampsTarget", 6))
+	state := map[string]any{"mode": mode, "eligible": false, "progress": 0, "remaining": 0, "target": target, "rewardTitle": stringConfig(config, "stampReward", "Подарок"), "balancePoints": points, "balanceValue": monetaryValue}
+	switch mode {
+	case "stamps":
+		progress := visits % target
+		eligible := visits > 0 && progress == 0
+		remaining := target - progress
+		if eligible {
+			progress, remaining = target, 0
+		}
+		state["progress"], state["remaining"], state["eligible"] = progress, remaining, eligible
+	case "discount":
+		start, step := max(0, intConfig(config, "discountStart", 3)), max(1, intConfig(config, "discountStep", 2))
+		maximum, interval := max(start, intConfig(config, "discountMax", 15)), max(1, intConfig(config, "visitsPerStep", 3))
+		discount := min(maximum, start+(visits/interval)*step)
+		state["progress"], state["target"], state["remaining"], state["discountPercent"] = discount, maximum, max(0, maximum-discount), discount
+	default:
+		state["progress"], state["target"] = points, points
+	}
+	return state
+}
+
+func intConfig(values map[string]any, key string, fallback int) int {
+	if value, ok := values[key].(float64); ok {
+		return int(value)
+	}
+	return fallback
+}
+func stringConfig(values map[string]any, key, fallback string) string {
+	if value, ok := values[key].(string); ok && value != "" {
+		return value
+	}
+	return fallback
 }
 
 func (a *api) customerWheelSpin(w http.ResponseWriter, r *http.Request) {

@@ -207,6 +207,7 @@ func (a *api) authenticate(next http.Handler) http.Handler {
 			}
 		}
 		ctx := context.WithValue(r.Context(), identityKey, claims)
+		captureTelemetryIdentity(r, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

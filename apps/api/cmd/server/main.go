@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +20,10 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if err := validateEnvironment(os.Getenv); err != nil {
+		slog.Error("production configuration invalid", "error", err)
+		os.Exit(1)
+	}
 
 	db, err := pgxpool.New(ctx, env("DATABASE_URL", "postgres://tappix:tappix_local@localhost:5432/tappix?sslmode=disable"))
 	if err != nil {
@@ -50,6 +56,42 @@ func main() {
 	_ = server.Shutdown(shutdown)
 }
 
+func validateEnvironment(getenv func(string) string) error {
+	if strings.ToLower(strings.TrimSpace(getenv("APP_ENV"))) != "production" {
+		return nil
+	}
+	required := []string{"DATABASE_URL", "JWT_SECRET", "APP_URL", "SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "METRICS_TOKEN"}
+	missing := []string{}
+	for _, key := range required {
+		if strings.TrimSpace(getenv(key)) == "" {
+			missing = append(missing, key)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required production variables: %s", strings.Join(missing, ", "))
+	}
+	if strings.EqualFold(getenv("OTP_DEV_MODE"), "true") {
+		return fmt.Errorf("OTP_DEV_MODE must be false in production")
+	}
+	if !strings.EqualFold(getenv("SMTP_TLS"), "true") {
+		return fmt.Errorf("SMTP_TLS must be true in production")
+	}
+	secret := getenv("JWT_SECRET")
+	lower := strings.ToLower(secret)
+	if len(secret) < 32 || strings.Contains(lower, "change") || strings.Contains(lower, "secret") || strings.Contains(lower, "development") {
+		return fmt.Errorf("JWT_SECRET must be a strong unique value of at least 32 characters")
+	}
+	database := strings.ToLower(getenv("DATABASE_URL"))
+	if strings.Contains(database, "tappix_local") || strings.Contains(database, "changeme") || strings.Contains(database, "password") {
+		return fmt.Errorf("DATABASE_URL contains an unsafe production credential")
+	}
+	appURL := strings.ToLower(getenv("APP_URL"))
+	if !strings.HasPrefix(appURL, "https://") {
+		return fmt.Errorf("APP_URL must use HTTPS in production")
+	}
+	return nil
+}
+
 func startWorkersWhenSchemaReady(ctx context.Context, db *pgxpool.Pool, secret string) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -62,6 +104,7 @@ func startWorkersWhenSchemaReady(ctx context.Context, db *pgxpool.Pool, secret s
 			httpapi.StartAutomation(ctx, db)
 			httpapi.StartIntegrationWorkers(ctx, db, secret)
 			httpapi.StartAnalyticsProjectionWorker(ctx, db)
+			httpapi.StartReportWorker(ctx, db, secret)
 			slog.Info("background workers started after schema became ready")
 			return
 		}

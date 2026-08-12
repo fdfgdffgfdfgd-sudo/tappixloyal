@@ -8,6 +8,7 @@ login=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/js
 token=$(printf '%s' "$login" | jq -r '.data.accessToken')
 test -n "$token"
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/dashboard" | jq -e '.data.repeatCustomers >= 0 and .data.rewardsIssued >= 0 and (.data.latestCustomers | type == "array")' >/dev/null
+curl -fsS "${API_URL%/api/v1}/metrics" | grep -q 'tappix_http_requests_total'
 
 assert_get_json() {
 	label=$1
@@ -45,6 +46,37 @@ curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: applicatio
 assert_get_json bonus-liability /analytics/bonus-liability '.data.issued >= 0 and .data.liability >= 0 and .data.expectedRedemptionCost >= 0'
 assert_get_json registration-retention '/analytics/retention?cohortType=registration&periods=4' '.data.grain == "month" and .data.periods == 4 and (.data.cohorts | type == "array")'
 assert_get_json purchase-retention '/analytics/retention?cohortType=first_purchase&periods=4' '.data.grain == "week" and (.data.cohorts | type == "array")'
+assert_get_json report-schedules /reports/schedules '.data | type == "array"'
+report_schedule=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"name":"Integration owner report","reportType":"owner_summary","channel":"email","recipients":["owner@example.com"],"frequency":"weekly","timezone":"Asia/Almaty","sendHour":9,"sendWeekday":1,"format":"xlsx","active":true}' "$API_URL/reports/schedules")
+report_schedule_id=$(printf '%s' "$report_schedule" | jq -r '.data.id')
+report_run=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/reports/schedules/$report_schedule_id/run")
+report_run_id=$(printf '%s' "$report_run" | jq -r '.data.id')
+i=0
+report_status=queued
+while [ "$i" -lt 30 ] && { [ "$report_status" = queued ] || [ "$report_status" = processing ]; }; do
+	sleep 1
+	report_status=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/reports/runs" | jq -r --arg id "$report_run_id" '.data[] | select(.id==$id) | .status')
+	i=$((i+1))
+done
+test "$report_status" = sent
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/reports/runs/$report_run_id/download" -o "$fixture_dir/report.xlsx"
+unzip -t "$fixture_dir/report.xlsx" >/dev/null
+curl -fsS -X DELETE -H "Authorization: Bearer $token" "$API_URL/reports/schedules/$report_schedule_id" | jq -e '.data.deleted == true' >/dev/null
+
+# Temporary delivery errors are queued for an automatic retry with a visible next attempt.
+retry_schedule=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"name":"Integration retry report","reportType":"owner_summary","channel":"webhook","recipients":["00000000-0000-0000-0000-000000000099"],"frequency":"daily","timezone":"Asia/Almaty","sendHour":9,"format":"summary","active":true}' "$API_URL/reports/schedules")
+retry_schedule_id=$(printf '%s' "$retry_schedule" | jq -r '.data.id')
+retry_run=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/reports/schedules/$retry_schedule_id/run")
+retry_run_id=$(printf '%s' "$retry_run" | jq -r '.data.id')
+i=0
+retry_attempts=0
+while [ "$i" -lt 30 ] && [ "$retry_attempts" -lt 1 ]; do
+	sleep 1
+	retry_attempts=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/reports/runs" | jq -r --arg id "$retry_run_id" '.data[] | select(.id==$id) | .attempts')
+	i=$((i+1))
+done
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/reports/runs" | jq -e --arg id "$retry_run_id" '.data[] | select(.id==$id) | .status=="queued" and .attempts==1 and (.nextAttemptAt|length)>0 and (.error|length)>0' >/dev/null
+curl -fsS -X DELETE -H "Authorization: Bearer $token" "$API_URL/reports/schedules/$retry_schedule_id" | jq -e '.data.deleted == true' >/dev/null
 assert_get_json integration-connections /integration-connections '.data | type == "array"'
 assert_get_json webhook-deliveries /webhook-deliveries '.data | type == "array"'
 assert_get_json campaigns /campaigns '.data | type == "array"'
@@ -72,6 +104,7 @@ grep -q 'tappix_guest_refresh' "$guest_cookies"
 guest_csrf=$(awk '$6 == "tappix_guest_csrf" { print $7 }' "$guest_cookies")
 test -n "$guest_csrf"
 customer_profile=$(curl -fsS -b "$guest_cookies" "$API_URL/customer/me")
+curl -fsS -b "$guest_cookies" "$API_URL/customer/wallet" | jq -e '.data.loyalty.mode and (.data.loyalty.progress >= 0) and (.data.loyalty.remaining >= 0) and (.data.loyalty.eligible | type == "boolean")' >/dev/null
 curl -fsS -b "$guest_cookies" "$API_URL/customer/rewards" | jq -e '.data | type == "array"' >/dev/null
 profile_payload=$(printf '%s' "$customer_profile" | jq -c '{firstName:.data.firstName,lastName:.data.lastName,birthday:(.data.birthday // "" | .[0:10])}')
 csrf_rejected=$(curl -sS -o /dev/null -w '%{http_code}' -b "$guest_cookies" -X PATCH "$API_URL/customer/me" -H 'Content-Type: application/json' -d "$profile_payload")
@@ -108,6 +141,28 @@ branch_id=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/branches" | jq
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/branches/$branch_id" | jq -e '.data.stats.visits30Days >= 0 and (.data.employees | type == "array") and (.data.devices | type == "array")' >/dev/null
 cross_branch=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $docmed_token" "$API_URL/branches/$branch_id")
 test "$cross_branch" = "404"
+
+# Product DoD: publish program -> register guest -> wallet progress -> staff visit -> reward -> redeem -> history.
+original_portal=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/settings/guest-portal" | jq -c '.data + {loyaltyMode:(.data.loyaltyMode // "points"),stampsTarget:(.data.stampsTarget // 6),stampReward:(.data.stampReward // "Подарок") }')
+curl -fsS -X PATCH -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"loyaltyMode":"stamps","stampsTarget":2,"stampReward":"Integration подарок","discountStart":3,"discountStep":2,"discountMax":15,"visitsPerStep":3}' "$API_URL/settings/guest-portal" | jq -e '.data.loyaltyMode == "stamps" and .data.stampsTarget == 2' >/dev/null
+device_token=$(docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT token FROM devices WHERE company_id=(SELECT id FROM companies WHERE slug='dentline') AND is_active LIMIT 1")
+product_phone="+7 701 8$(date +%H%M%S)"
+product_cookies="$fixture_dir/product-cookies.txt"
+registered=$(curl -fsS -c "$product_cookies" -X POST "$API_URL/customer/register" -H 'Content-Type: application/json' -d "{\"token\":\"$device_token\",\"firstName\":\"Product\",\"lastName\":\"DoD\",\"phone\":\"$product_phone\",\"pin\":\"4827\",\"consent\":true}")
+product_customer=$(printf '%s' "$registered" | jq -r '.data.customerId')
+docker compose exec -T postgres psql -U tappix -d tappix -c "UPDATE customers SET total_visits=1 WHERE id='$product_customer'" >/dev/null
+curl -fsS -b "$product_cookies" "$API_URL/customer/wallet" | jq -e '.data.loyalty.mode == "stamps" and .data.loyalty.progress == 1 and .data.loyalty.remaining == 1 and .data.loyalty.rewardTitle == "Integration подарок"' >/dev/null
+visit=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"customerId\":\"$product_customer\",\"branchId\":\"$branch_id\",\"comment\":\"Product DoD\"}" "$API_URL/visits")
+printf '%s' "$visit" | jq -e '.data.totalVisits == 2 and .data.reward == "1 наград"' >/dev/null
+reward_id=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/rewards" | jq -r '.data[] | select(.name=="Integration подарок" and .status=="available") | .id' | head -1)
+test -n "$reward_id"
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"reason":"Product DoD redemption","idempotencyKey":"product-dod-redemption"}' "$API_URL/rewards/$reward_id/redeem" | jq -e '.data.status == "redeemed"' >/dev/null
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"reason":"Product DoD redemption","idempotencyKey":"product-dod-redemption"}' "$API_URL/rewards/$reward_id/redeem" | jq -e '.data.status == "redeemed" and .data.idempotentReplay == true' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/rewards/$reward_id/transactions" | jq -e '.data | any(.operation == "issued") and any(.operation == "redeemed")' >/dev/null
+docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM reward_transactions WHERE reward_id='$reward_id' AND operation='redeemed'" | grep -qx '1'
+curl -fsS -b "$product_cookies" "$API_URL/customer/rewards" | jq -e '.data | any(.name == "Integration подарок" and .status == "redeemed")' >/dev/null
+curl -fsS -X PATCH -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$original_portal" "$API_URL/settings/guest-portal" >/dev/null
+curl -fsS -X DELETE -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer" | jq -e '.data.archived == true' >/dev/null
 
 device=$(curl -fsS -X POST "$API_URL/devices" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"branchId\":\"$branch_id\",\"kind\":\"qr\",\"name\":\"Integration device\",\"destination\":\"join\"}")
 device_id=$(printf '%s' "$device" | jq -r '.data.id')

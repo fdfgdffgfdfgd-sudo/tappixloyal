@@ -31,3 +31,5 @@ html{font-size:100%;background:var(--ds-bg)}body{background:var(--ds-bg);color:v
 @media(max-width:620px){.referral-intro{align-items:flex-start;flex-direction:column}.referral-flow{grid-template-columns:1fr}.referral-editor>header,.referral-editor>footer{align-items:flex-start;flex-direction:column}.referral-editor>footer>div{width:100%;display:grid}.referral-editor>footer button{justify-content:center}.referral-basic-fields,.referral-results,.referral-leaders{padding:17px}.referral-result-row{grid-template-columns:1fr 1fr}.referral-live-summary>div{grid-template-columns:1fr}.referral-example-bg{padding:0;align-items:end}.referral-example-bg>section{border-radius:18px 18px 0 0}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.ui-skeleton i{animation:none}:where(button,a){transition:none}}
 @media(forced-colors:active){.ui-status,.ui-callout,.ui-empty>span,.ui-error>span{border:1px solid CanvasText}}
+/* WCAG AA contrast for compact navigation and keyboard hints. */
+.product-nav-label{color:#8492a5}.sidebar-meta{color:#849287}.product-command kbd{color:#5f6470}
