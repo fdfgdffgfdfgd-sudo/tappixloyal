@@ -17,16 +17,29 @@ import (
 
 func (a *api) setSessionCookies(w http.ResponseWriter, access, refresh, role string) {
 	secure := os.Getenv("COOKIE_SECURE") == "true"
-	prefix := "tappix"
-	if role == "super_admin" {
-		prefix = "tappix_platform"
+	prefix := sessionCookiePrefix(role)
+	refreshMaxAge := 30 * 24 * 60 * 60
+	if role == "customer" {
+		refreshMaxAge = 90 * 24 * 60 * 60
 	}
 	http.SetCookie(w, &http.Cookie{Name: prefix + "_access", Value: access, Path: "/api/v1", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: 15 * 60})
-	http.SetCookie(w, &http.Cookie{Name: prefix + "_refresh", Value: refresh, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: 30 * 24 * 60 * 60})
+	http.SetCookie(w, &http.Cookie{Name: prefix + "_refresh", Value: refresh, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: refreshMaxAge})
 }
 
-func (a *api) clearSessionCookies(w http.ResponseWriter) {
-	for _, item := range []struct{ name, path string }{{"tappix_access", "/api/v1"}, {"tappix_refresh", "/api/v1/auth"}, {"tappix_platform_access", "/api/v1"}, {"tappix_platform_refresh", "/api/v1/auth"}} {
+func sessionCookiePrefix(role string) string {
+	switch role {
+	case "super_admin", "platform":
+		return "tappix_platform"
+	case "customer", "guest":
+		return "tappix_guest"
+	default:
+		return "tappix"
+	}
+}
+
+func (a *api) clearSessionCookies(w http.ResponseWriter, audience string) {
+	prefix := sessionCookiePrefix(audience)
+	for _, item := range []struct{ name, path string }{{prefix + "_access", "/api/v1"}, {prefix + "_refresh", "/api/v1/auth"}} {
 		http.SetCookie(w, &http.Cookie{Name: item.name, Value: "", Path: item.path, HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteStrictMode})
 	}
 }
