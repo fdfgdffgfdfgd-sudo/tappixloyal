@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/smtp"
 	"strings"
@@ -190,8 +191,15 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 		status, errorText := "sent", ""
 		message := strings.ReplaceAll(strings.ReplaceAll(item.message, "{{name}}", item.name), "{{amount}}", fmt.Sprintf("%d", item.amount))
 		var runID string
-		err = db.QueryRow(ctx, `INSERT INTO campaign_automation_runs(company_id,automation_id,customer_id,trigger_key,status,channel,recipient,payload)
-			VALUES($1,$2,$3,$4,'pending',$5,nullif($6,''),jsonb_build_object('amount',$7::integer)) ON CONFLICT(company_id,trigger_key) DO NOTHING RETURNING id`, item.companyID, item.automationID, item.customerID, item.triggerKey, item.channel, item.email, item.amount).Scan(&runID)
+		var attempt int
+		err = db.QueryRow(ctx, `INSERT INTO campaign_automation_runs(company_id,automation_id,customer_id,trigger_key,status,channel,recipient,payload,attempt_count)
+			VALUES($1,$2,$3,$4,'pending',$5,nullif($6,''),jsonb_build_object('amount',$7::integer),1)
+			ON CONFLICT(company_id,trigger_key) DO UPDATE SET
+				status='pending',attempt_count=campaign_automation_runs.attempt_count+1,
+				next_attempt_at=null,error=null,updated_at=now()
+			WHERE (campaign_automation_runs.status='pending' AND campaign_automation_runs.updated_at<now()-interval '5 minutes')
+				OR (campaign_automation_runs.status='failed' AND campaign_automation_runs.attempt_count<3 AND campaign_automation_runs.next_attempt_at<=now())
+			RETURNING id,attempt_count`, item.companyID, item.automationID, item.customerID, item.triggerKey, item.channel, item.email, item.amount).Scan(&runID, &attempt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
 		}
@@ -200,10 +208,15 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 		}
 		if item.channel != "email" || item.email == "" {
 			status, errorText = "skipped", "Канал недоступен или у клиента нет email"
-		} else if sendErr := smtp.SendMail(envValue("SMTP_HOST", "mailpit")+":"+envValue("SMTP_PORT", "1025"), nil, fromAddress(envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>")), []string{item.email}, []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s", envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>"), item.email, item.subject, message))); sendErr != nil {
+		} else if sendErr := sendAutomationEmail(ctx, item.email, item.subject, message); sendErr != nil {
 			status, errorText = "failed", sendErr.Error()
 		}
-		_, err = db.Exec(ctx, `UPDATE campaign_automation_runs SET status=$2,error=nullif($3,''),sent_at=CASE WHEN $2='sent' THEN now() ELSE NULL END WHERE id=$1`, runID, status, errorText)
+		var nextAttempt *time.Time
+		if status == "failed" && attempt < 3 {
+			retryAt := time.Now().Add(time.Duration(attempt*attempt) * time.Minute)
+			nextAttempt = &retryAt
+		}
+		_, err = db.Exec(ctx, `UPDATE campaign_automation_runs SET status=$2::varchar,error=nullif($3::text,''),sent_at=CASE WHEN $2::varchar='sent' THEN now() ELSE NULL END,next_attempt_at=$4::timestamptz,updated_at=now() WHERE id=$1`, runID, status, errorText, nextAttempt)
 		if err != nil {
 			return processed, err
 		}
@@ -212,6 +225,50 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 		}
 	}
 	return processed, nil
+}
+
+func sendAutomationEmail(ctx context.Context, recipient, subject, message string) error {
+	host := envValue("SMTP_HOST", "mailpit")
+	address := net.JoinHostPort(host, envValue("SMTP_PORT", "1025"))
+	deliveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	connection, err := (&net.Dialer{}).DialContext(deliveryCtx, "tcp", address)
+	if err != nil {
+		return fmt.Errorf("smtp connection: %w", err)
+	}
+	defer connection.Close()
+	if deadline, ok := deliveryCtx.Deadline(); ok {
+		_ = connection.SetDeadline(deadline)
+	}
+	client, err := smtp.NewClient(connection, host)
+	if err != nil {
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer client.Close()
+	from := fromAddress(envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>"))
+	if err = client.Mail(from); err != nil {
+		return fmt.Errorf("smtp sender: %w", err)
+	}
+	if err = client.Rcpt(recipient); err != nil {
+		return fmt.Errorf("smtp recipient: %w", err)
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("smtp data: %w", err)
+	}
+	payload := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s", envValue("SMTP_FROM", "Tappix <noreply@tappix.kz>"), recipient, subject, message)
+	_, writeErr := writer.Write([]byte(payload))
+	closeErr := writer.Close()
+	if writeErr != nil {
+		return fmt.Errorf("smtp write: %w", writeErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("smtp finish: %w", closeErr)
+	}
+	if err = client.Quit(); err != nil {
+		return fmt.Errorf("smtp quit: %w", err)
+	}
+	return nil
 }
 
 func (a *api) processBirthdays(w http.ResponseWriter, r *http.Request) {

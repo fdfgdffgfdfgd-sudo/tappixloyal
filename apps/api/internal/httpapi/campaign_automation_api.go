@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -73,6 +74,7 @@ func (a *api) runCampaignAutomations(w http.ResponseWriter, r *http.Request) {
 	}
 	messages, err := processCampaignAutomations(r.Context(), a.db, companyID(r))
 	if err != nil {
+		slog.Error("campaign automation processing failed", "company", companyID(r), "error", err)
 		fail(w, 500, "AUTOMATION_FAILED", "Не удалось выполнить триггерные рассылки")
 		return
 	}
