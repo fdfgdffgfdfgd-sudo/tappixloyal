@@ -946,7 +946,6 @@ export function LoyaltyPage() {
     }[]
   >([]);
   const [processing, setProcessing] = useState(false);
-  const [workspace, setWorkspace] = useState<"program" | "rewards" | "automations">("program");
   useEffect(() => {
     api<Loyalty>("/loyalty/rules")
       .then(setValue)
@@ -1017,20 +1016,15 @@ export function LoyaltyPage() {
       subtitle="Настройте начисления и награды без разработчика"
     >
       <Notice text={msg} />
-      <nav className="loyalty-workspace-tabs" aria-label="Разделы программы">
-        <button className={workspace === "program" ? "active" : ""} aria-pressed={workspace === "program"} onClick={() => setWorkspace("program")}><CreditCard/><span><strong>Программа</strong><small>Механика и карта</small></span></button>
-        <button className={workspace === "rewards" ? "active" : ""} aria-pressed={workspace === "rewards"} onClick={() => setWorkspace("rewards")}><Gift/><span><strong>Награды</strong><small>Что получит клиент</small></span></button>
-        <button className={workspace === "automations" ? "active" : ""} aria-pressed={workspace === "automations"} onClick={() => setWorkspace("automations")}><Bell/><span><strong>Автоматизации</strong><small>Когда начислять и возвращать</small></span></button>
-      </nav>
-      {workspace === "program" && <div className="loyalty-workspace-panel"><ProgramMechanics />
+      <div className="loyalty-workspace-panel"><ProgramMechanics />
         <section className="loyalty-launch-path"><header><div><small>ПОСЛЕ ПУБЛИКАЦИИ</small><h2>Три шага до первых результатов</h2></div></header><div className="loyalty-next-actions">
           <Link href="/devices"><b>1</b><QrCode/><span><strong>Разместите QR или NFC</strong><small>Клиент откроет и сохранит карту</small></span></Link>
           <Link href="/scanner"><b>2</b><Nfc/><span><strong>Отмечайте покупки</strong><small>Сотрудник сканирует карту гостя</small></span></Link>
           <Link href="/analytics"><b>3</b><TrendingUp/><span><strong>Следите за возвратом</strong><small>Увидите повторные визиты и выручку</small></span></Link>
         </div></section>
-      </div>}
-      {workspace === "rewards" && <div className="loyalty-workspace-panel"><div className="workspace-explainer"><Gift/><div><small>НАГРАДЫ</small><h2>Дайте клиенту понятную цель</h2><p>Создайте подарок, скидку или услугу и укажите простое условие получения.</p></div></div><RewardBuilder /></div>}
-      {workspace === "automations" && <div className="loyalty-workspace-panel"><div className="workspace-explainer"><Bell/><div><small>АВТОМАТИЗАЦИИ</small><h2>Система действует в нужный момент</h2><p>Настройте базовые начисления и проверьте клиентов, которых пора вернуть.</p></div></div>
+      </div>
+      <details className="loyalty-secondary-section"><summary><Gift/><span><strong>Дополнительные награды</strong><small>Скидки, услуги и подарки поверх основной программы</small></span><Plus/></summary><div><RewardBuilder /></div></details>
+      <details className="loyalty-secondary-section"><summary><Bell/><span><strong>Дополнительные правила</strong><small>Приветственный бонус, день рождения и возврат клиентов</small></span><Plus/></summary><div><div className="workspace-explainer"><Bell/><div><small>АВТОМАТИЧЕСКИЕ ДЕЙСТВИЯ</small><h2>Система действует в нужный момент</h2><p>Нулевое значение отключает соответствующее начисление.</p></div></div>
       <form className="settings-card" onSubmit={save}>
         <div className="settings-title">
           <span>
@@ -1116,7 +1110,7 @@ export function LoyaltyPage() {
           )}
         </section>
       </div>
-      </div>}
+      </div></details>
     </SectionShell>
   );
 }
