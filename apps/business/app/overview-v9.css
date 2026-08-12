@@ -1,0 +1,16 @@
+.dashboard-loading { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.dashboard-loading i { height: 128px; border-radius: 14px; background: linear-gradient(90deg, #eef1f5 25%, #f8fafc 50%, #eef1f5 75%); background-size: 200% 100%; animation: overview-skeleton 1.4s ease-in-out infinite; }
+.dashboard-load-error { min-height: 160px; padding: 24px; border: 1px solid #fecaca; border-radius: 16px; background: #fff; display: flex; align-items: center; gap: 14px; }
+.dashboard-load-error > svg { color: #dc2626; }
+.dashboard-load-error span { flex: 1; display: grid; gap: 4px; }
+.dashboard-load-error small { color: #64748b; }
+.dashboard-load-error button, .dashboard-empty-result a { min-height: 44px; padding: 0 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: #0f172a; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-weight: 750; text-decoration: none; }
+.dashboard-load-error button svg { width: 17px; }
+.dashboard-empty-result { min-height: 255px; padding: 30px; display: grid; place-items: center; align-content: center; text-align: center; }
+.dashboard-empty-result > svg { width: 34px; color: #94a3b8; }
+.dashboard-empty-result strong { margin-top: 13px; font-size: 17px; }
+.dashboard-empty-result p { max-width: 430px; margin: 7px 0 17px; color: #64748b; line-height: 1.5; }
+@keyframes overview-skeleton { to { background-position: -200% 0; } }
+@media (max-width: 800px) { .dashboard-loading { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 420px) { .dashboard-loading { grid-template-columns: 1fr; } .dashboard-load-error { align-items: flex-start; flex-wrap: wrap; } .dashboard-load-error button { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .dashboard-loading i { animation: none; } }
