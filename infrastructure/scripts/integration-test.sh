@@ -83,6 +83,14 @@ curl -fsS -b "$guest_cookies" -c "$guest_cookies" -H "X-CSRF-Token: $guest_csrf"
 guest_logged_out=$(curl -sS -o /dev/null -w '%{http_code}' -b "$guest_cookies" "$API_URL/customer/me")
 test "$guest_logged_out" = "401"
 
+platform_cookies="$fixture_dir/platform-cookies.txt"
+platform_login=$(curl -fsS -c "$platform_cookies" -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"admin@tappix.kz","password":"Admin2026!"}')
+printf '%s' "$platform_login" | jq -e '.data.mfaSetupRequired == true and .data.user.role == "super_admin"' >/dev/null
+platform_blocked=$(curl -sS -o /dev/null -w '%{http_code}' -b "$platform_cookies" "$API_URL/admin/dashboard")
+test "$platform_blocked" = "403"
+platform_csrf=$(awk '$6 == "tappix_platform_csrf" { print $7 }' "$platform_cookies")
+curl -fsS -b "$platform_cookies" -H "X-CSRF-Token: $platform_csrf" -X POST "$API_URL/auth/mfa/setup?aud=platform" -H 'Content-Type: application/json' -d '{}' | jq -e '.data.secret | length >= 16' >/dev/null
+
 docmed=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"owner@docmed.kz","password":"DocMed2026!"}')
 docmed_token=$(printf '%s' "$docmed" | jq -r '.data.accessToken')
 dentline_customer=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers" | jq -r '.data.items[0].id')

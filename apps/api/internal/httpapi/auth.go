@@ -80,7 +80,7 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = a.db.Exec(r.Context(), `UPDATE users SET last_login_at=now() WHERE id=$1`, userID)
 	a.setSessionCookies(w, access, refresh, role)
-	write(w, 200, envelope{Success: true, Data: map[string]any{"accessToken": access, "refreshToken": refresh, "mfaRequired": false, "user": map[string]string{"id": userID, "companyId": companyID, "firstName": firstName, "lastName": lastName, "role": role}}})
+	write(w, 200, envelope{Success: true, Data: map[string]any{"accessToken": access, "refreshToken": refresh, "mfaRequired": false, "mfaSetupRequired": role == "super_admin" && !mfaEnabled, "user": map[string]string{"id": userID, "companyId": companyID, "firstName": firstName, "lastName": lastName, "role": role}}})
 }
 
 func (a *api) refresh(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +150,7 @@ func (a *api) authenticate(next http.Handler) http.Handler {
 		token := ""
 		if strings.HasPrefix(header, "Bearer ") {
 			token = strings.TrimPrefix(header, "Bearer ")
-		} else if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/audit" {
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/audit" || r.URL.Query().Get("aud") == "platform" {
 			if c, err := r.Cookie("tappix_platform_access"); err == nil {
 				token = c.Value
 			}
@@ -183,6 +183,13 @@ func (a *api) authenticate(next http.Handler) http.Handler {
 		if adminRoute && claims.Audience != "platform" {
 			fail(w, 403, "INVALID_AUDIENCE", "Требуется сессия платформы")
 			return
+		}
+		if adminRoute && claims.Role == "super_admin" {
+			var mfaEnabled bool
+			if a.db.QueryRow(r.Context(), `SELECT mfa_enabled FROM users WHERE id=$1 AND status='active'`, claims.Subject).Scan(&mfaEnabled) != nil || !mfaEnabled {
+				fail(w, 403, "MFA_SETUP_REQUIRED", "Настройте MFA перед входом в Platform Console")
+				return
+			}
 		}
 		if claims.Role != "super_admin" {
 			var active bool
