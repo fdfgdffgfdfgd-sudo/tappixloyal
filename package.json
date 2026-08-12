@@ -15,6 +15,8 @@
     "stack:down": "docker compose down",
     "db:backup": "sh infrastructure/scripts/backup-postgres.sh",
     "test:integration": "sh infrastructure/scripts/integration-test.sh",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
     "db:seed-operations": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000005_subscription_devices_demo.up.sql",
     "db:seed-auth": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000006_customer_auth_super_admin.up.sql",
     "db:seed-settings": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000007_settings_reviews_notifications.up.sql",
@@ -25,9 +27,16 @@
     "db:seed-automation": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000012_loyalty_automation.up.sql",
     "db:seed-campaigns": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000013_campaigns.up.sql"
   },
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "overrides": {
     "postcss": "8.5.25",
     "sharp": "0.35.3"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1"
   }
 }
