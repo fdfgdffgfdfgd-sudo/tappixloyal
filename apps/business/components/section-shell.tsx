@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api, logout } from "@/lib/api";
+import { PageHeader } from "./ui-system";
 
 const items: readonly (readonly [string, readonly (readonly [string, LucideIcon, string])[]])[] = [
   ["Работа", [["/", LayoutDashboard, "Обзор"], ["/customers", Users, "Клиенты"], ["/scanner", Camera, "Staff Mode"]]],
@@ -218,16 +219,7 @@ export function SectionShell({
         </div>
       </aside>
       <main className="product-main">
-        <header>
-          <button className="product-menu-toggle" aria-label="Открыть меню" onClick={() => setNavOpen(true)}><Menu/></button>
-          <div>
-            <span className="product-eyebrow">
-              {current?.name || "Рабочее пространство"}
-            </span>
-            <h1>{title}</h1>
-            <p>{subtitle}</p>
-          </div>
-          <div className="product-user">
+        <PageHeader eyebrow={current?.name || "Рабочее пространство"} title={title} subtitle={subtitle} leading={<button className="product-menu-toggle" aria-label="Открыть меню" onClick={() => setNavOpen(true)}><Menu/></button>} actions={<div className="product-user">
             <button ref={commandTrigger} className="product-command" onClick={() => setCommandOpen(true)}><Search/><span>Найти</span><kbd>⌘ K</kbd></button>
             <Link className="header-scanner" href="/scanner"><Camera/>Сканер</Link>
             <span>{(user.firstName || "А").slice(0, 1)}</span>
@@ -242,8 +234,7 @@ export function SectionShell({
                   : "Сотрудник"}
               </small>
             </div>
-          </div>
-        </header>
+          </div>}/>
         <section id="main-content">{children}</section>
       </main>
       {navOpen && <button className="product-nav-scrim" aria-label="Закрыть меню" onClick={() => setNavOpen(false)}/>}
