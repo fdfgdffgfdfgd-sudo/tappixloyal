@@ -42,6 +42,23 @@ paths:
       summary: Create customer
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CustomerInput'}}}}
       responses: {'201': {$ref: '#/components/responses/Success'}, '409': {$ref: '#/components/responses/Error'}}
+  /staff/customers/lookup:
+    post:
+      summary: Find a tenant customer by the six-digit cashier code
+      description: Requires authenticated staff access, customer read permission and the loyalty entitlement. Returns a masked phone and records an audit event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, pattern: '^[0-9]{6}$', example: '482731'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
   /customers/{id}:
     parameters: [{$ref: '#/components/parameters/Id'}]
     get: {summary: Customer profile, responses: {'200': {$ref: '#/components/responses/Success'}}}

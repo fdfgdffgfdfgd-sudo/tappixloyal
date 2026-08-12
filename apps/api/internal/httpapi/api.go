@@ -103,6 +103,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("POST /api/v1/workspaces/{id}/switch", a.requireRoles(http.HandlerFunc(a.switchWorkspace), "company_owner", "employee"))
 	protected.Handle("GET /api/v1/dashboard", a.requirePermission("workspace.read", http.HandlerFunc(a.dashboard)))
 	protected.Handle("GET /api/v1/customers", a.requireModule("crm", a.requirePermission("customers.read", http.HandlerFunc(a.listCustomers))))
+	protected.Handle("POST /api/v1/staff/customers/lookup", a.requireModule("loyalty", a.requirePermission("customers.read", http.HandlerFunc(a.customerByCode))))
 	protected.Handle("GET /api/v1/customers/export", a.requireModule("crm", a.requireRoles(http.HandlerFunc(a.exportCustomers), "company_owner")))
 	protected.Handle("POST /api/v1/customers", a.requireModule("crm", a.requirePermission("customers.write", http.HandlerFunc(a.createCustomer))))
 	protected.Handle("GET /api/v1/customers/{id}", a.requirePermission("customers.read", http.HandlerFunc(a.getCustomer)))

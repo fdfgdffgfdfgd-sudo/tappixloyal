@@ -4,7 +4,7 @@ import { AlertTriangle, Camera, CameraOff, CheckCircle2, Keyboard, LoaderCircle,
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 
-type Customer={id:string;firstName:string;lastName:string;phone:string;totalPoints:number;totalVisits:number;level:string};
+type Customer={id:string;firstName:string;lastName:string;phone?:string;phoneMasked?:string;totalPoints:number;totalVisits:number;level?:string};
 type Branch={id:string;name:string;address:string;isActive:boolean};
 type VisitResult={id:string;pointsAdded:number;balance:number;totalVisits:number;reward?:string};
 
@@ -24,7 +24,8 @@ export function StaffScanner(){
   async function stop(){if(scanner.current){await scanner.current.stop().catch(()=>undefined);scanner.current.clear();scanner.current=null}setScanning(false)}
   async function resolve(raw:string){
     if(resolvingLock.current)return;resolvingLock.current=true;setResolving(true);
-    let id=customerID(raw);
+    let id=customerID(raw);const entered=raw.replace(/\s/g,"");
+    if(!id&&/^\d{6}$/.test(entered)){try{const found=await api<Customer>("/staff/customers/lookup",{method:"POST",body:JSON.stringify({code:entered})});await stop();setMessage("");setSuccess(null);setCustomer(found);resolvingLock.current=false;setResolving(false);return}catch(e){setMessage(e instanceof Error?e.message:"Клиент не найден");resolvingLock.current=false;setResolving(false);return}}
     if(!id&&raw.trim().length>=2){try{const result=await api<{items:Customer[]}>(`/customers?search=${encodeURIComponent(raw.trim())}&limit=2`);if(result.items.length===1)id=result.items[0].id;else if(result.items.length>1){setMessage("Найдено несколько клиентов. Уточните телефон или отсканируйте QR.");resolvingLock.current=false;setResolving(false);return}}catch{}}
     if(!id){setMessage("Клиент не найден. Введите полный телефон, имя или отсканируйте QR карты.");resolvingLock.current=false;setResolving(false);return}
     await stop();setMessage("");setSuccess(null);
@@ -54,13 +55,13 @@ export function StaffScanner(){
           {!scanning&&<div className="scanner-placeholder"><span>{resolving?<LoaderCircle className="spin"/>:<ScanLine/>}</span><h2>{resolving?"Проверяем карту…":"Наведите камеру на QR гостя"}</h2><p>{resolving?"Находим клиента и его актуальный баланс.":"QR находится на цифровой бонусной карте клиента."}</p><button type="button" disabled={resolving||branchesLoading||!branches.length} onClick={()=>void start()}><Camera/>Включить камеру</button></div>}
           {scanning&&<button type="button" className="stop-camera" onClick={()=>void stop()}><CameraOff/>Остановить</button>}
         </div>
-        <form className="scanner-manual" onSubmit={manual}><Keyboard/><label>Поиск без камеры<input ref={manualInput} name="code" autoComplete="off" placeholder="Телефон, имя или код QR" required/></label><button disabled={resolving}>{resolving?"Проверяем…":"Найти"}</button></form>
+        <form className="scanner-manual" onSubmit={manual}><Keyboard/><label>Введите код клиента<input ref={manualInput} name="code" inputMode="numeric" autoComplete="off" pattern="[0-9 ]{6,7}" placeholder="482 731" maxLength={7} required/></label><button disabled={resolving}>{resolving?"Проверяем…":"Найти клиента"}</button></form>
       </section>
       <aside className="scan-result">
         {!customer&&!message&&<div className="scan-empty"><UserRound/><strong>Здесь появится гость</strong><p>Проверьте имя и подтвердите посещение.</p></div>}
         {message&&<div className="scan-error" role="alert"><AlertTriangle/><strong>Не удалось продолжить</strong><p>{message}</p><button type="button" onClick={reset}>Попробовать снова</button></div>}
         {customer&&<div className="guest-confirm">
-          <div className="guest-confirm-head"><span>{customer.firstName.slice(0,1)}</span><div><small>КЛИЕНТ НАЙДЕН</small><h2>{customer.firstName} {customer.lastName}</h2><p>{customer.phone}</p></div><CheckCircle2/></div>
+          <div className="guest-confirm-head"><span>{customer.firstName.slice(0,1)}</span><div><small>КЛИЕНТ НАЙДЕН</small><h2>{customer.firstName} {customer.lastName}</h2><p>{customer.phoneMasked||customer.phone}</p></div><CheckCircle2/></div>
           <div className="guest-confirm-stats"><span><small>Посещений</small><strong>{customer.totalVisits}</strong></span><span><small>Баланс</small><strong>{customer.totalPoints}</strong></span><span><small>Статус</small><strong>{customer.level}</strong></span></div>
           {success?<div className="visit-success" role="status" aria-live="polite"><CheckCircle2/><h3>Посещение отмечено</h3><strong>+{success.pointsAdded} бонусов</strong><p>{success.reward?`Также выдана награда: ${success.reward}`:`Теперь посещений: ${success.totalVisits}`}</p><button type="button" onClick={reset}><RotateCcw/>Сканировать следующего</button></div>:<>
             <label className="scanner-branch">Точка посещения<select value={branchId} onChange={e=>setBranchId(e.target.value)}>{branches.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select></label>

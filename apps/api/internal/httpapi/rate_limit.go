@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,9 @@ func (a *api) rateLimit(next http.Handler) http.Handler {
 		window := time.Minute
 		if r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/customer/login" || r.URL.Path == "/api/v1/customer/otp/request" || r.URL.Path == "/api/v1/customer/otp/verify" {
 			limit = 10
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/v1/staff/customers/lookup") {
+			limit = 20
 		}
 		bucket := time.Now().Unix() / int64(window.Seconds())
 		key := "rate:" + host + ":" + r.URL.Path + ":" + strconv.FormatInt(bucket, 10)

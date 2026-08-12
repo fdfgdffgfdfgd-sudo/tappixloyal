@@ -73,9 +73,15 @@ curl -fsS -X PATCH "$API_URL/customer/me" -H "Authorization: Bearer $customer_to
 docmed=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"owner@docmed.kz","password":"DocMed2026!"}')
 docmed_token=$(printf '%s' "$docmed" | jq -r '.data.accessToken')
 dentline_customer=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers" | jq -r '.data.items[0].id')
+dentline_code=$(docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT customer_code FROM customers WHERE id='$dentline_customer'")
+test "${#dentline_code}" = "6"
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"code\":\"$dentline_code\"}" "$API_URL/staff/customers/lookup" | jq -e --arg id "$dentline_customer" '.data.id == $id and (.data.phoneMasked | contains("•••"))' >/dev/null
 curl -fsS "$API_URL/customers/$dentline_customer/rewards" -H "Authorization: Bearer $token" | jq -e '.data | type == "array"' >/dev/null
 cross_status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $docmed_token" "$API_URL/customers/$dentline_customer")
 test "$cross_status" = "404"
+cross_code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $docmed_token" -H 'Content-Type: application/json' -d "{\"code\":\"$dentline_code\"}" "$API_URL/staff/customers/lookup")
+test "$cross_code" = "404"
+docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM audit_logs WHERE action='customer.code_lookup' AND company_id=(SELECT id FROM companies WHERE slug='dentline')" | grep -Eq '^[1-9][0-9]*$'
 
 branch_id=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/branches" | jq -r '.data[0].id')
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/branches/$branch_id" | jq -e '.data.stats.visits30Days >= 0 and (.data.employees | type == "array") and (.data.devices | type == "array")' >/dev/null
