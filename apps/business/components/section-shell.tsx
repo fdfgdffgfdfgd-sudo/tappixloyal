@@ -7,19 +7,14 @@ import {
   Camera,
   Check,
   ChevronDown,
-  ChevronRight,
-  CreditCard,
   Gift,
-  Globe2,
   Menu,
   LayoutDashboard,
   LogOut,
-  Nfc,
   Plug,
   Search,
   Send,
   Settings,
-  Star,
   Users,
   UsersRound,
   X,
@@ -31,9 +26,9 @@ import { PageHeader } from "./ui-system";
 const items: readonly (readonly [string, readonly (readonly [string, LucideIcon, string])[]])[] = [
   ["Работа", [["/", LayoutDashboard, "Обзор"], ["/customers", Users, "Клиенты"], ["/scanner", Camera, "Staff Mode"]]],
   ["Лояльность", [["/loyalty", Gift, "Программа"], ["/referrals", UsersRound, "Рефералы"]]],
-  ["Коммуникации", [["/campaigns", Send, "Кампании"], ["/notifications", Send, "Сообщения"], ["/reviews", Star, "Отзывы"]]],
-  ["Аналитика", [["/analytics", BarChart3, "Результаты"]]],
-  ["Система", [["/devices", Nfc, "NFC и QR"], ["/integrations", Plug, "Интеграции"], ["/employees", Users, "Сотрудники"], ["/settings", Settings, "Настройки"], ["/subscription", CreditCard, "Тариф"], ["/website", Globe2, "Сайт"]]],
+  ["Коммуникации", [["/campaigns", Send, "Кампании и автоматизации"]]],
+  ["Аналитика", [["/analytics", BarChart3, "Аналитика"]]],
+  ["Система", [["/integrations", Plug, "Интеграции"], ["/employees", Users, "Команда"], ["/settings", Settings, "Настройки"]]],
 ] as const;
 const settingsRoutes = new Set([
   "/branches",
@@ -76,7 +71,6 @@ export function SectionShell({
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [actualRole, setActualRole] = useState("");
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(["Работа"]));
   const commandTrigger = useRef<HTMLButtonElement>(null);
   const user = useMemo(() => {
     if (typeof window === "undefined")
@@ -117,24 +111,14 @@ export function SectionShell({
   const current =
     workspaces.find((workspace) => workspace.current) || workspaces[0];
   const selected = settingsRoutes.has(active) && active !== "/employees" ? "/settings" : active;
-  useEffect(() => {
-    const owner = items.find(([, links]) => links.some(([href]) => href === selected));
-    if (owner) setExpandedGroups(previous => new Set([...previous, owner[0]]));
-  }, [selected]);
-  const commandItems = items
+  const visibleItems = actualRole === "employee" ? [items[0]] : items;
+  const commandItems = visibleItems
     .flatMap(([, links]) => links)
     .filter(([, , label]) => label.toLocaleLowerCase("ru-RU").includes(commandQuery.trim().toLocaleLowerCase("ru-RU")));
   function closeCommand() {
     setCommandOpen(false);
     setCommandQuery("");
     requestAnimationFrame(() => commandTrigger.current?.focus());
-  }
-  function toggleGroup(group: string) {
-    setExpandedGroups(previous => {
-      const next = new Set(previous);
-      if (next.has(group)) next.delete(group); else next.add(group);
-      return next;
-    });
   }
   async function switchWorkspace(id: string) {
     if (id === current?.id) {
@@ -209,9 +193,9 @@ export function SectionShell({
           )}
         </div>
         <nav aria-label="Основная навигация">
-          {items.map(([group, links]) => {const open=expandedGroups.has(group);const activeGroup=links.some(([href])=>href===selected);return <div className={`product-nav-group ${open?"is-open":""}`} key={group}><button className={activeGroup?"has-current":""} type="button" aria-expanded={open} onClick={()=>toggleGroup(group)}><span>{group}</span><ChevronRight/></button><div>{links.map(([href, Icon, label]) => (
+          {visibleItems.map(([group, links]) => <div className="product-nav-group is-open" key={group}><span className="product-nav-label">{group}</span><div>{links.map(([href, Icon, label]) => (
             <Link aria-current={selected === href ? "page" : undefined} className={selected === href ? "current" : ""} href={href} key={href} onClick={() => setNavOpen(false)}><Icon />{label}</Link>
-          ))}</div></div>})}
+          ))}</div></div>)}
         </nav>
         <div className="sidebar-meta">
           <span className="online-dot" />
