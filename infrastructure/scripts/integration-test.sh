@@ -7,6 +7,7 @@ trap 'rm -rf "$fixture_dir"' EXIT INT TERM
 login=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"armat@tappix.kz","password":"Tappix2026!"}')
 token=$(printf '%s' "$login" | jq -r '.data.accessToken')
 test -n "$token"
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/dashboard" | jq -e '.data.repeatCustomers >= 0 and .data.rewardsIssued >= 0 and (.data.latestCustomers | type == "array")' >/dev/null
 
 assert_get_json() {
 	label=$1
