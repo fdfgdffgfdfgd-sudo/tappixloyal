@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api, logout } from "@/lib/api";
+import { workspaceRoleLabel } from "@/lib/labels";
 import { PageHeader } from "./ui-system";
 import { useDialogFocusTrap } from "./use-dialog-focus-trap";
 
@@ -176,7 +177,7 @@ export function SectionShell({
                   </span>
                   <span>
                     <strong>{workspace.name}</strong>
-                    <small>{workspace.role}</small>
+                    <small>{workspaceRoleLabel(workspace.role)}</small>
                   </span>
                   {workspace.current && <i aria-label="Текущее пространство"><Check /></i>}
                 </button>

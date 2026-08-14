@@ -19,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { subscriptionStatusLabel } from "@/lib/labels";
 import { SectionShell } from "./section-shell";
 type Company = {
   name: string;
@@ -337,7 +338,7 @@ export function MVPSettingsPage() {
                   <strong>Тариф</strong>
                   <small>
                     {subscription?.plan || "Starter"} ·{" "}
-                    {subscription?.status || "trial"}
+                    {subscriptionStatusLabel(subscription?.status || "trial")}
                   </small>
                 </span>
                 <ChevronRight />
