@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -123,7 +126,7 @@ func (a *api) sendWhatsAppOTP(r *http.Request, phone, code string) error {
 	}
 	payload := map[string]any{"messaging_product": "whatsapp", "recipient_type": "individual", "to": phone, "type": "template", "template": map[string]any{"name": a.whatsappTemplate, "language": map[string]string{"code": "ru"}, "components": []any{map[string]any{"type": "body", "parameters": []any{map[string]string{"type": "text", "text": code}}}, map[string]any{"type": "button", "sub_type": "url", "index": "0", "parameters": []any{map[string]string{"type": "text", "text": code}}}}}}
 	body, _ := json.Marshal(payload)
-	url := fmt.Sprintf("https://graph.facebook.com/%s/%s/messages", a.whatsappGraphVersion, a.whatsappPhoneID)
+	url := fmt.Sprintf("%s/%s/%s/messages", strings.TrimRight(a.whatsappAPIBase, "/"), a.whatsappGraphVersion, a.whatsappPhoneID)
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -141,4 +144,111 @@ func (a *api) sendWhatsAppOTP(r *http.Request, phone, code string) error {
 		return fmt.Errorf("meta status %d: %s", resp.StatusCode, string(detail))
 	}
 	return nil
+}
+
+func sendWhatsAppText(ctx context.Context, phone, message string) (string, error) {
+	token, phoneID := os.Getenv("WHATSAPP_ACCESS_TOKEN"), os.Getenv("WHATSAPP_PHONE_NUMBER_ID")
+	if token == "" || phoneID == "" {
+		return "", fmt.Errorf("whatsapp is not configured")
+	}
+	phone = nonDigits.ReplaceAllString(phone, "")
+	if len(phone) < 10 {
+		return "", fmt.Errorf("customer has no valid WhatsApp phone")
+	}
+	payload, _ := json.Marshal(map[string]any{"messaging_product": "whatsapp", "recipient_type": "individual", "to": phone, "type": "text", "text": map[string]any{"preview_url": false, "body": message}})
+	base := strings.TrimRight(envValue("WHATSAPP_API_BASE", "https://graph.facebook.com"), "/")
+	url := fmt.Sprintf("%s/%s/%s/messages", base, envValue("WHATSAPP_GRAPH_VERSION", "v23.0"), phoneID)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	detail, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", fmt.Errorf("meta status %d: %s", response.StatusCode, strings.TrimSpace(string(detail)))
+	}
+	var result struct {
+		Messages []struct {
+			ID string `json:"id"`
+		} `json:"messages"`
+	}
+	if json.Unmarshal(detail, &result) != nil || len(result.Messages) == 0 || result.Messages[0].ID == "" {
+		return "", fmt.Errorf("meta response has no message id")
+	}
+	return result.Messages[0].ID, nil
+}
+
+func validMetaSignature(secret string, body []byte, signature string) bool {
+	if secret == "" || !strings.HasPrefix(signature, "sha256=") {
+		return false
+	}
+	provided, err := hex.DecodeString(strings.TrimPrefix(signature, "sha256="))
+	if err != nil {
+		return false
+	}
+	digest := hmac.New(sha256.New, []byte(secret))
+	_, _ = digest.Write(body)
+	return hmac.Equal(provided, digest.Sum(nil))
+}
+
+func (a *api) whatsAppStatusWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		if r.URL.Query().Get("hub.mode") == "subscribe" && r.URL.Query().Get("hub.verify_token") == os.Getenv("WHATSAPP_VERIFY_TOKEN") && os.Getenv("WHATSAPP_VERIFY_TOKEN") != "" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(r.URL.Query().Get("hub.challenge")))
+			return
+		}
+		fail(w, 403, "WEBHOOK_VERIFICATION_FAILED", "Webhook verification failed")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		fail(w, 400, "INVALID_WEBHOOK", "Invalid payload")
+		return
+	}
+	if !validMetaSignature(os.Getenv("WHATSAPP_APP_SECRET"), body, r.Header.Get("X-Hub-Signature-256")) {
+		fail(w, 401, "INVALID_SIGNATURE", "Invalid webhook signature")
+		return
+	}
+	var payload struct {
+		Entry []struct {
+			Changes []struct {
+				Value struct {
+					Statuses []struct {
+						ID        string          `json:"id"`
+						Status    string          `json:"status"`
+						Timestamp string          `json:"timestamp"`
+						Errors    json.RawMessage `json:"errors"`
+					} `json:"statuses"`
+				} `json:"value"`
+			} `json:"changes"`
+		} `json:"entry"`
+	}
+	if json.Unmarshal(body, &payload) != nil {
+		fail(w, 400, "INVALID_WEBHOOK", "Invalid payload")
+		return
+	}
+	updated := 0
+	for _, entry := range payload.Entry {
+		for _, change := range entry.Changes {
+			for _, status := range change.Value.Statuses {
+				if status.ID == "" {
+					continue
+				}
+				allowed := status.Status == "sent" || status.Status == "delivered" || status.Status == "read" || status.Status == "failed"
+				if !allowed {
+					continue
+				}
+				tag, _ := a.db.Exec(r.Context(), `UPDATE campaign_automation_runs SET provider_status=$2,delivered_at=CASE WHEN $2 IN('delivered','read') THEN coalesce(delivered_at,now()) ELSE delivered_at END,error=CASE WHEN $2='failed' THEN coalesce(nullif($3::text,'null'),'WhatsApp delivery failed') ELSE error END,provider_payload=$4::jsonb,updated_at=now() WHERE provider_message_id=$1`, status.ID, status.Status, string(status.Errors), body)
+				updated += int(tag.RowsAffected())
+			}
+		}
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]int{"updated": updated}})
 }

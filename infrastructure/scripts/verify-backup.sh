@@ -15,4 +15,11 @@ docker compose exec -T postgres createdb -U "$username" "$verification_db"
 gzip -dc "$archive" | docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$username" "$verification_db" >/dev/null
 tables=$(docker compose exec -T postgres psql -U "$username" -d "$verification_db" -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
 if [ "$tables" -lt 1 ]; then printf '%s\n' "Backup verification failed: restored database is empty" >&2; exit 1; fi
-printf 'Backup verification passed: %s tables restored into isolated database %s\n' "$tables" "$verification_db"
+source_tables=$(docker compose exec -T postgres psql -U "$username" -d "${POSTGRES_DB:-tappix}" -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+[ "$tables" = "$source_tables" ] || { printf 'Backup verification failed: source has %s tables, restore has %s\n' "$source_tables" "$tables" >&2; exit 1; }
+for table in companies customers users sales_transactions customer_events audit_logs; do
+  source_count=$(docker compose exec -T postgres psql -U "$username" -d "${POSTGRES_DB:-tappix}" -Atc "SELECT count(*) FROM $table")
+  restored_count=$(docker compose exec -T postgres psql -U "$username" -d "$verification_db" -Atc "SELECT count(*) FROM $table")
+  [ "$source_count" = "$restored_count" ] || { printf 'Backup verification failed: %s count differs (%s/%s)\n' "$table" "$source_count" "$restored_count" >&2; exit 1; }
+done
+printf 'Backup verification passed: %s tables and critical row counts restored into isolated database %s\n' "$tables" "$verification_db"

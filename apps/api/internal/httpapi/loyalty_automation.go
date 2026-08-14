@@ -170,7 +170,7 @@ func processBirthdayBonuses(ctx context.Context, db *pgxpool.Pool, onlyCompany s
 
 type automationCandidate struct {
 	automationID, companyID, customerID, triggerType, triggerKey string
-	name, email, channel, subject, message                       string
+	name, email, phone, channel, subject, message                string
 	amount                                                       int
 }
 
@@ -180,33 +180,33 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 		FROM customers c LEFT JOIN sales_transactions t ON t.company_id=c.company_id AND t.customer_id=c.id AND t.original_transaction_id IS NULL AND t.status IN('completed','partially_refunded','refunded') AND NOT t.sandbox
 		LEFT JOIN visits v ON v.company_id=c.company_id AND v.customer_id=c.id AND v.reversed_at IS NULL WHERE c.deleted_at IS NULL GROUP BY c.id
 	), candidates AS (
-		SELECT a.id automation_id,a.company_id,c.id customer_id,a.trigger_type,'automation:birthday:'||c.id||':'||extract(year from current_date)::integer trigger_key,c.first_name,c.email,a.channel,a.subject,a.message,coalesce((a.settings->>'bonusAmount')::integer,0) amount
+		SELECT a.id automation_id,a.company_id,c.id customer_id,a.trigger_type,'automation:birthday:'||c.id||':'||extract(year from current_date)::integer trigger_key,c.first_name,c.email,c.phone,a.channel,a.subject,a.message,coalesce((a.settings->>'bonusAmount')::integer,0) amount
 		FROM campaign_automations a JOIN customers c ON c.company_id=a.company_id AND c.deleted_at IS NULL
 		WHERE a.is_active AND a.trigger_type='birthday_bonus' AND c.birthday IS NOT NULL AND extract(month from c.birthday)=extract(month from current_date) AND extract(day from c.birthday)=extract(day from current_date)
 		UNION ALL
-		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:expiry:'||c.id||':'||current_date,c.first_name,c.email,a.channel,a.subject,a.message,sum(l.remaining_amount)::integer
+		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:expiry:'||c.id||':'||current_date,c.first_name,c.email,c.phone,a.channel,a.subject,a.message,sum(l.remaining_amount)::integer
 		FROM campaign_automations a JOIN customers c ON c.company_id=a.company_id AND c.deleted_at IS NULL JOIN bonus_lots l ON l.company_id=c.company_id AND l.customer_id=c.id
 		WHERE a.is_active AND a.trigger_type='bonus_expiry_3d' AND l.status IN('pending','active') AND l.remaining_amount>0 AND l.expires_at::date=current_date+coalesce((a.settings->>'daysBefore')::integer,3)
 		GROUP BY a.id,c.id
 		UNION ALL
-		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:winback:'||c.id||':'||la.last_at::date,c.first_name,c.email,a.channel,a.subject,a.message,0
+		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:winback:'||c.id||':'||la.last_at::date,c.first_name,c.email,c.phone,a.channel,a.subject,a.message,0
 		FROM campaign_automations a JOIN customers c ON c.company_id=a.company_id AND c.deleted_at IS NULL JOIN last_activity la ON la.company_id=c.company_id AND la.customer_id=c.id
 		WHERE a.is_active AND a.trigger_type='winback_30d' AND la.last_at<=now()-make_interval(days=>coalesce((a.settings->>'inactiveDays')::integer,30))
 		UNION ALL
-		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:event:'||e.id,c.first_name,c.email,a.channel,a.subject,a.message,0
+		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:event:'||e.id,c.first_name,c.email,c.phone,a.channel,a.subject,a.message,0
 		FROM campaign_automations a JOIN customer_events e ON e.company_id=a.company_id
 		JOIN customers c ON c.company_id=e.company_id AND c.id=e.customer_id AND c.deleted_at IS NULL
 		WHERE a.is_active AND ((a.trigger_type='near_reward' AND e.event_type='reward.almost_unlocked')
 			OR (a.trigger_type='reward_unlocked' AND e.event_type='reward.unlocked')
 			OR (a.trigger_type='nfc_registration' AND e.event_type='customer.registered'))
-	) SELECT automation_id,company_id,customer_id,trigger_type,trigger_key,first_name,coalesce(email,''),channel,subject,message,amount FROM candidates WHERE ($1='' OR company_id::text=$1)`, onlyCompany)
+	) SELECT automation_id,company_id,customer_id,trigger_type,trigger_key,first_name,coalesce(email,''),coalesce(phone,''),channel,subject,message,amount FROM candidates WHERE ($1='' OR company_id::text=$1)`, onlyCompany)
 	if err != nil {
 		return 0, err
 	}
 	items := []automationCandidate{}
 	for rows.Next() {
 		var item automationCandidate
-		if rows.Scan(&item.automationID, &item.companyID, &item.customerID, &item.triggerType, &item.triggerKey, &item.name, &item.email, &item.channel, &item.subject, &item.message, &item.amount) == nil {
+		if rows.Scan(&item.automationID, &item.companyID, &item.customerID, &item.triggerType, &item.triggerKey, &item.name, &item.email, &item.phone, &item.channel, &item.subject, &item.message, &item.amount) == nil {
 			items = append(items, item)
 		}
 	}
@@ -217,6 +217,10 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 		message := strings.ReplaceAll(strings.ReplaceAll(item.message, "{{name}}", item.name), "{{amount}}", fmt.Sprintf("%d", item.amount))
 		var runID string
 		var attempt int
+		recipient := item.email
+		if item.channel == "whatsapp" {
+			recipient = item.phone
+		}
 		err = db.QueryRow(ctx, `INSERT INTO campaign_automation_runs(company_id,automation_id,customer_id,trigger_key,status,channel,recipient,payload,attempt_count)
 			VALUES($1,$2,$3,$4,'pending',$5,nullif($6,''),jsonb_build_object('amount',$7::integer),1)
 			ON CONFLICT(company_id,trigger_key) DO UPDATE SET
@@ -224,24 +228,34 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 				next_attempt_at=null,error=null,updated_at=now()
 			WHERE (campaign_automation_runs.status='pending' AND campaign_automation_runs.updated_at<now()-interval '5 minutes')
 				OR (campaign_automation_runs.status='failed' AND campaign_automation_runs.attempt_count<3 AND campaign_automation_runs.next_attempt_at<=now())
-			RETURNING id,attempt_count`, item.companyID, item.automationID, item.customerID, item.triggerKey, item.channel, item.email, item.amount).Scan(&runID, &attempt)
+			RETURNING id,attempt_count`, item.companyID, item.automationID, item.customerID, item.triggerKey, item.channel, recipient, item.amount).Scan(&runID, &attempt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
 		}
 		if err != nil {
 			return processed, err
 		}
-		if item.channel != "email" || item.email == "" {
-			status, errorText = "skipped", "Канал недоступен или у клиента нет email"
-		} else if sendErr := sendEmailWithTimeout(ctx, item.email, item.subject, message); sendErr != nil {
-			status, errorText = "failed", sendErr.Error()
+		providerMessageID := ""
+		if item.channel == "email" {
+			if item.email == "" {
+				status, errorText = "skipped", "У клиента нет email"
+			} else if sendErr := sendEmailWithTimeout(ctx, item.email, item.subject, message); sendErr != nil {
+				status, errorText = "failed", sendErr.Error()
+			}
+		} else if item.channel == "whatsapp" {
+			providerMessageID, err = sendWhatsAppText(ctx, item.phone, message)
+			if err != nil {
+				status, errorText = "failed", err.Error()
+			}
+		} else {
+			status, errorText = "skipped", "Канал не поддерживается"
 		}
 		var nextAttempt *time.Time
 		if status == "failed" && attempt < 3 {
 			retryAt := time.Now().Add(time.Duration(attempt*attempt) * time.Minute)
 			nextAttempt = &retryAt
 		}
-		_, err = db.Exec(ctx, `UPDATE campaign_automation_runs SET status=$2::varchar,error=nullif($3::text,''),sent_at=CASE WHEN $2::varchar='sent' THEN now() ELSE NULL END,next_attempt_at=$4::timestamptz,updated_at=now() WHERE id=$1`, runID, status, errorText, nextAttempt)
+		_, err = db.Exec(ctx, `UPDATE campaign_automation_runs SET status=$2::varchar,error=nullif($3::text,''),sent_at=CASE WHEN $2::varchar='sent' THEN now() ELSE NULL END,next_attempt_at=$4::timestamptz,provider_message_id=nullif($5,''),provider_status=CASE WHEN $5<>'' THEN 'accepted' ELSE provider_status END,updated_at=now() WHERE id=$1`, runID, status, errorText, nextAttempt, providerMessageID)
 		if err != nil {
 			return processed, err
 		}

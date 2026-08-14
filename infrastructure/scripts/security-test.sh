@@ -24,6 +24,16 @@ grep -qi 'samesite=strict' "$work/login.headers" || { echo 'FAIL: SameSite Stric
 code=$(curl -sS -H "Authorization: Bearer $owner_token" -o /dev/null -w '%{http_code}' "$API/admin/dashboard")
 expect_code "$code" 403 "business owner reaching founder API"
 
+staff_login=$(curl -fsS -X POST "$API/auth/login" -H 'Content-Type: application/json' -d '{"email":"approval.staff@tappix.test","password":"Approval2026!"}')
+staff_token=$(printf '%s' "$staff_login" | jq -r '.data.accessToken')
+for path in audit risk-investigations subscription employees settings/company; do
+  code=$(curl -sS -H "Authorization: Bearer $staff_token" -o /dev/null -w '%{http_code}' "$API/$path")
+  expect_code "$code" 403 "staff reaching owner endpoint $path"
+done
+
+code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API/integrations/whatsapp/status" -H 'X-Hub-Signature-256: sha256=invalid' -H 'Content-Type: application/json' -d '{"entry":[]}')
+expect_code "$code" 401 "forged WhatsApp status webhook"
+
 code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"' OR 1=1 --\",\"password\":\"x\"}")
 [ "$code" = 401 ] || [ "$code" = 422 ] || { echo "FAIL: injection-shaped login accepted ($code)"; exit 1; }
 

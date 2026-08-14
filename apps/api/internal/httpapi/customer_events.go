@@ -15,9 +15,13 @@ func appendCustomerEvent(r *http.Request, tx pgx.Tx, companyID, customerID, even
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(r.Context(), `INSERT INTO customer_events(company_id,customer_id,event_type,branch_id,source,properties,idempotency_key)
+	_, err = tx.Exec(r.Context(), `WITH inserted AS (
+		INSERT INTO customer_events(company_id,customer_id,event_type,branch_id,source,properties,idempotency_key)
 		VALUES($1,$2,$3,nullif($4,'')::uuid,'tappix',$5::jsonb,nullif($6,''))
-		ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, companyID, customerID, eventType, branchID, payload, idempotencyKey)
+		ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING RETURNING id
+	) INSERT INTO integration_jobs(company_id,connection_id,job_type,resource,idempotency_key,payload)
+	SELECT $1,NULL,'analytics_projection','customer_event','analytics:event:'||id::text,jsonb_build_object('eventId',id,'eventType',$3::text) FROM inserted
+	ON CONFLICT DO NOTHING`, companyID, customerID, eventType, branchID, payload, idempotencyKey)
 	return err
 }
 

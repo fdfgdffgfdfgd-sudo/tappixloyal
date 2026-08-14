@@ -26,6 +26,7 @@ type api struct {
 	whatsappPhoneID      string
 	whatsappTemplate     string
 	whatsappGraphVersion string
+	whatsappAPIBase      string
 	otpDevMode           bool
 	integrationService   *posintegration.Service
 	integrationKey       []byte
@@ -67,7 +68,7 @@ type visitInput struct {
 }
 
 func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Handler {
-	a := &api{db: db, redis: redisClient, jwtSecret: []byte(jwtSecret), whatsappToken: os.Getenv("WHATSAPP_ACCESS_TOKEN"), whatsappPhoneID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"), whatsappTemplate: envOr("WHATSAPP_OTP_TEMPLATE", "tappix_login_code"), whatsappGraphVersion: envOr("WHATSAPP_GRAPH_VERSION", "v23.0"), otpDevMode: os.Getenv("OTP_DEV_MODE") == "true", integrationService: posintegration.NewService(db), integrationKey: integrationEncryptionKey(jwtSecret)}
+	a := &api{db: db, redis: redisClient, jwtSecret: []byte(jwtSecret), whatsappToken: os.Getenv("WHATSAPP_ACCESS_TOKEN"), whatsappPhoneID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"), whatsappTemplate: envOr("WHATSAPP_OTP_TEMPLATE", "tappix_login_code"), whatsappGraphVersion: envOr("WHATSAPP_GRAPH_VERSION", "v23.0"), whatsappAPIBase: envOr("WHATSAPP_API_BASE", "https://graph.facebook.com"), otpDevMode: os.Getenv("OTP_DEV_MODE") == "true", integrationService: posintegration.NewService(db), integrationKey: integrationEncryptionKey(jwtSecret)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("GET /metrics", a.metrics)
@@ -80,6 +81,8 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	mux.HandleFunc("POST /api/v1/customer/login", a.customerLogin)
 	mux.HandleFunc("POST /api/v1/customer/otp/request", a.customerOTPRequest)
 	mux.HandleFunc("POST /api/v1/customer/otp/verify", a.customerOTPVerify)
+	mux.HandleFunc("GET /api/v1/integrations/whatsapp/status", a.whatsAppStatusWebhook)
+	mux.HandleFunc("POST /api/v1/integrations/whatsapp/status", a.whatsAppStatusWebhook)
 	mux.HandleFunc("GET /api/v1/public/guest/{token}", a.publicGuestPortal)
 	mux.HandleFunc("GET /api/v1/public/referral/{code}", a.publicReferral)
 	mux.HandleFunc("GET /api/v1/public/sites/{slug}", a.publicWebsite)
@@ -116,6 +119,8 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("GET /api/v1/customers/{id}/history", a.requirePermission("customers.read", http.HandlerFunc(a.customerAdminHistory)))
 	protected.Handle("GET /api/v1/customers/{id}/timeline", a.requirePermission("customers.read", http.HandlerFunc(a.customerTimeline)))
 	protected.Handle("GET /api/v1/customers/{id}/risk", a.requirePermission("customers.read", http.HandlerFunc(a.customerRisk)))
+	protected.Handle("GET /api/v1/risk-investigations", a.requireRoles(http.HandlerFunc(a.riskInvestigations), "company_owner"))
+	protected.Handle("POST /api/v1/risk-investigations/{id}/decision", a.requireRoles(http.HandlerFunc(a.decideRiskInvestigation), "company_owner"))
 	protected.Handle("GET /api/v1/customers/{id}/rewards", a.requireModule("loyalty", a.requirePermission("customers.read", http.HandlerFunc(a.customerRewards))))
 	protected.Handle("PATCH /api/v1/rewards/{id}", a.requireModule("loyalty", a.requirePermission("rewards.write", http.HandlerFunc(a.updateReward))))
 	protected.Handle("GET /api/v1/reward-definitions", a.requireModule("loyalty", a.requirePermission("rewards.read", http.HandlerFunc(a.listRewardDefinitions))))

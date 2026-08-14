@@ -115,6 +115,28 @@ func refreshAnalyticsCompany(ctx context.Context, db *pgxpool.Pool, companyID st
 	if err != nil {
 		return err
 	}
+	if _, err = tx.Exec(ctx, `INSERT INTO analytics_daily_facts(company_id,fact_date,branch_id)
+		SELECT $1,occurred_at::date,branch_id FROM customer_events WHERE company_id=$1 AND occurred_at::date>=current_date-365 GROUP BY occurred_at::date,branch_id
+		ON CONFLICT DO NOTHING`, companyID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `WITH events AS (
+		SELECT occurred_at::date fact_date,branch_id,
+		count(*) FILTER(WHERE event_type='customer.registered') registrations,
+		coalesce(sum((properties->>'amount')::numeric) FILTER(WHERE event_type='bonus.earned' AND properties->>'amount'~'^[0-9]+([.][0-9]+)?$'),0) bonus_issued,
+		coalesce(sum((properties->>'amount')::numeric) FILTER(WHERE event_type='bonus.spent' AND properties->>'amount'~'^[0-9]+([.][0-9]+)?$'),0) bonus_redeemed
+		FROM customer_events WHERE company_id=$1 AND occurred_at::date>=current_date-365 GROUP BY occurred_at::date,branch_id
+	) UPDATE analytics_daily_facts f SET registrations=e.registrations,bonus_issued_value=e.bonus_issued,bonus_redeemed_value=e.bonus_redeemed,updated_at=now()
+	FROM events e WHERE f.company_id=$1 AND f.fact_date=e.fact_date AND f.branch_id IS NOT DISTINCT FROM e.branch_id`, companyID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `WITH campaign AS (
+		SELECT created_at::date fact_date,coalesce(sum(conversion_value) FILTER(WHERE conversion_type IN('purchase','redeemed')),0) revenue
+		FROM campaign_conversions WHERE company_id=$1 AND created_at::date>=current_date-365 GROUP BY created_at::date
+	) UPDATE analytics_daily_facts f SET attributed_revenue=c.revenue,updated_at=now() FROM campaign c
+	WHERE f.company_id=$1 AND f.fact_date=c.fact_date AND f.branch_id IS NULL`, companyID); err != nil {
+		return err
+	}
 	if _, err = tx.Exec(ctx, `DELETE FROM analytics_customer_features WHERE company_id=$1`, companyID); err != nil {
 		return err
 	}

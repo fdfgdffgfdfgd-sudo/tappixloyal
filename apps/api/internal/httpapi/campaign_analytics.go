@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -98,6 +99,8 @@ func (a *api) campaignAnalytics(w http.ResponseWriter, r *http.Request) {
 	treatmentRate, holdoutRate := percentage(treatmentBuyers, treatment), percentage(holdoutBuyers, holdout)
 	upliftAvailable := holdoutPercent > 0 && holdout > 0
 	var uplift, incrementalRevenue any
+	var confidence any
+	significant := false
 	revenueForROI := attributedRevenue
 	revenueLabel := "attributed_revenue"
 	if upliftAvailable {
@@ -110,6 +113,17 @@ func (a *api) campaignAnalytics(w http.ResponseWriter, r *http.Request) {
 		incrementalRevenue = incremental
 		revenueForROI = incremental
 		revenueLabel = "incremental_revenue"
+		if treatment >= 30 && holdout >= 30 {
+			p1 := float64(treatmentBuyers) / float64(treatment)
+			p2 := float64(holdoutBuyers) / float64(holdout)
+			pooled := float64(treatmentBuyers+holdoutBuyers) / float64(treatment+holdout)
+			standardError := math.Sqrt(pooled * (1 - pooled) * (1/float64(treatment) + 1/float64(holdout)))
+			if standardError > 0 {
+				z := math.Abs(p1-p2) / standardError
+				confidence = (2*0.5*(1+math.Erf(z/math.Sqrt2)) - 1) * 100
+				significant = z >= 1.96
+			}
+		}
 	}
 	var roi any
 	if totalCost > 0 {
@@ -118,10 +132,11 @@ func (a *api) campaignAnalytics(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, envelope{Success: true, Data: map[string]any{
 		"campaignId": r.PathValue("id"), "name": name, "status": status, "sentAt": sentAt,
 		"attributionWindowDays": windowDays, "holdoutPercent": holdoutPercent, "upliftAvailable": upliftAvailable,
-		"audience":  map[string]int{"treatment": treatment, "holdout": holdout},
-		"delivery":  map[string]any{"delivered": delivered, "opened": opened, "clicked": clicked, "openRate": percentage(opened, delivered), "clickRate": percentage(clicked, delivered)},
-		"purchases": map[string]any{"treatmentBuyers": treatmentBuyers, "treatmentRevenue": treatmentRevenue, "holdoutBuyers": holdoutBuyers, "holdoutRevenue": holdoutRevenue, "treatmentConversionRate": treatmentRate, "holdoutConversionRate": holdoutRate, "attributedRevenue": attributedRevenue, "incrementalRevenue": incrementalRevenue, "upliftPercentagePoints": uplift},
-		"costs":     map[string]float64{"messages": messageSpend, "rewards": rewardSpend, "total": totalCost},
-		"roi":       roi, "roiRevenueBasis": revenueLabel,
+		"experiment": map[string]any{"sampleSufficient": treatment >= 30 && holdout >= 30, "statisticallySignificant": significant, "confidencePercent": confidence},
+		"audience":   map[string]int{"treatment": treatment, "holdout": holdout},
+		"delivery":   map[string]any{"delivered": delivered, "opened": opened, "clicked": clicked, "openRate": percentage(opened, delivered), "clickRate": percentage(clicked, delivered)},
+		"purchases":  map[string]any{"treatmentBuyers": treatmentBuyers, "treatmentRevenue": treatmentRevenue, "holdoutBuyers": holdoutBuyers, "holdoutRevenue": holdoutRevenue, "treatmentConversionRate": treatmentRate, "holdoutConversionRate": holdoutRate, "attributedRevenue": attributedRevenue, "incrementalRevenue": incrementalRevenue, "upliftPercentagePoints": uplift},
+		"costs":      map[string]float64{"messages": messageSpend, "rewards": rewardSpend, "total": totalCost},
+		"roi":        roi, "roiRevenueBasis": revenueLabel,
 	}})
 }

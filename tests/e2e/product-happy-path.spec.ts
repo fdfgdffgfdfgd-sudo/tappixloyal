@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
-  const blocking = results.violations.filter(item => item.impact === "critical" || item.impact === "serious");
+  const blocking = results.violations;
   expect(blocking, blocking.map(item => `${item.id}: ${item.help}`).join("\n")).toEqual([]);
 }
 
@@ -36,6 +36,13 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await expect(page).toHaveURL(/\/reports/);
   await expect(page.getByRole("heading", { name: "Регулярные отчёты" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Создать/ }).first()).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+
+  if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
+  await page.getByRole("link", { name: "Контроль рисков", exact: true }).click();
+  await expect(page).toHaveURL(/\/risk-center/);
+  await expect(page.getByRole("heading", { name: "Контроль рисков" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Очередь расследований" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
   if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();

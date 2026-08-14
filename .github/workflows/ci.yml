@@ -69,6 +69,18 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
+      - name: Run security and RBAC audit
+        run: npm run test:security
+
+      - name: Verify backup and isolated restore
+        run: npm run test:backup
+
+      - name: Run load smoke test
+        env:
+          VUS: 2
+          DURATION: 10s
+        run: npm run test:load
+
       - name: Show service logs on failure
         if: failure()
         run: docker compose logs --no-color

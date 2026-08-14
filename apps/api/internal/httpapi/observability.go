@@ -90,6 +90,7 @@ func (w *responseTelemetry) Write(body []byte) (int, error) {
 }
 
 var requestMetrics sync.Map
+var requestDurationMicros sync.Map
 var activeRequests atomic.Int64
 
 func metricCounter(key string) *atomic.Uint64 {
@@ -111,7 +112,10 @@ func (a *api) observe(next http.Handler) http.Handler {
 		route := telemetryRoute(r)
 		statusClass := strconv.Itoa(response.status/100) + "xx"
 		metricCounter(r.Method + "|" + route + "|" + statusClass).Add(1)
-		slog.Info("http.request", "event_type", "http.request", "method", r.Method, "route", route, "status", response.status, "duration_ms", time.Since(started).Milliseconds(), "response_bytes", response.bytes, "request_id", response.Header().Get("X-Request-ID"), "tenant_id", telemetryIdentity.tenantID, "actor_id", telemetryIdentity.actorID)
+		duration := time.Since(started)
+		durationCounter, _ := requestDurationMicros.LoadOrStore(r.Method+"|"+route, &atomic.Uint64{})
+		durationCounter.(*atomic.Uint64).Add(uint64(duration.Microseconds()))
+		slog.Info("http.request", "event_type", "http.request", "method", r.Method, "route", route, "status", response.status, "duration_ms", duration.Milliseconds(), "response_bytes", response.bytes, "request_id", response.Header().Get("X-Request-ID"), "tenant_id", telemetryIdentity.tenantID, "actor_id", telemetryIdentity.actorID)
 	})
 }
 
@@ -130,6 +134,15 @@ func (a *api) metrics(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(key, "|")
 		value, _ := requestMetrics.Load(key)
 		fmt.Fprintf(w, "tappix_http_requests_total{method=%q,route=%q,status_class=%q} %d\n", parts[0], parts[1], parts[2], value.(*atomic.Uint64).Load())
+	}
+	fmt.Fprint(w, "# HELP tappix_http_request_duration_seconds_sum Total request duration by route.\n# TYPE tappix_http_request_duration_seconds_sum counter\n")
+	durationKeys := []string{}
+	requestDurationMicros.Range(func(key, _ any) bool { durationKeys = append(durationKeys, key.(string)); return true })
+	sort.Strings(durationKeys)
+	for _, key := range durationKeys {
+		parts := strings.Split(key, "|")
+		value, _ := requestDurationMicros.Load(key)
+		fmt.Fprintf(w, "tappix_http_request_duration_seconds_sum{method=%q,route=%q} %.6f\n", parts[0], parts[1], float64(value.(*atomic.Uint64).Load())/1_000_000)
 	}
 	fmt.Fprintf(w, "# HELP tappix_http_requests_active Current active HTTP requests.\n# TYPE tappix_http_requests_active gauge\ntappix_http_requests_active %d\n", activeRequests.Load())
 }

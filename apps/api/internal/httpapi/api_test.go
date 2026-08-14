@@ -1,7 +1,11 @@
 package httpapi
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -123,6 +127,53 @@ func TestManagerApprovalThresholds(t *testing.T) {
 		if got := requiresManagerApproval(test.role, test.operation, test.amount); got != test.want {
 			t.Fatalf("requiresManagerApproval(%q, %q, %d) = %v, want %v", test.role, test.operation, test.amount, got, test.want)
 		}
+	}
+}
+
+func TestRiskRuleClassification(t *testing.T) {
+	if riskRuleCode("visit.create", "Слишком частый визит") != "rapid_visit" {
+		t.Fatal("visit rule was not classified")
+	}
+	if riskRuleCode("bonus.credit", "Крупная операция") != "large_manual_adjustment" {
+		t.Fatal("bonus rule was not classified")
+	}
+	if riskRuleCode("bonus.debit", "Повтор ручной операции") != "duplicate_operation" {
+		t.Fatal("duplicate must have priority")
+	}
+}
+
+func TestWhatsAppTextDelivery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" || r.Method != http.MethodPost {
+			t.Fatalf("unexpected provider request")
+		}
+		var payload map[string]any
+		if json.NewDecoder(r.Body).Decode(&payload) != nil || payload["to"] != "77001234567" || payload["type"] != "text" {
+			t.Fatalf("unexpected provider payload: %#v", payload)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.test-42"}]}`))
+	}))
+	defer server.Close()
+	t.Setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
+	t.Setenv("WHATSAPP_PHONE_NUMBER_ID", "phone-id")
+	t.Setenv("WHATSAPP_API_BASE", server.URL)
+	id, err := sendWhatsAppText(t.Context(), "+7 700 123 45 67", "Ваш подарок готов")
+	if err != nil || id != "wamid.test-42" {
+		t.Fatalf("delivery id=%q err=%v", id, err)
+	}
+}
+
+func TestMetaWebhookSignature(t *testing.T) {
+	body := []byte(`{"entry":[]}`)
+	digest := hmac.New(sha256.New, []byte("app-secret"))
+	_, _ = digest.Write(body)
+	signature := "sha256=" + hex.EncodeToString(digest.Sum(nil))
+	if !validMetaSignature("app-secret", body, signature) {
+		t.Fatal("valid Meta signature rejected")
+	}
+	if validMetaSignature("wrong-secret", body, signature) {
+		t.Fatal("invalid Meta signature accepted")
 	}
 }
 

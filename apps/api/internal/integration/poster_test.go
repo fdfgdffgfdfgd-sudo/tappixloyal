@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -55,5 +56,50 @@ func TestPosterAdapterRejectsMissingToken(t *testing.T) {
 	adapter := NewPosterAdapter(http.DefaultClient, "https://example.com")
 	if err := adapter.Authorize(context.Background(), AuthorizationInput{}); err == nil {
 		t.Fatal("missing token must be rejected")
+	}
+}
+
+func TestPosterAdapterPaginationAndProviderFailures(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("token") != "token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/clients.getClients":
+			if r.URL.Query().Get("offset") != "40" {
+				t.Fatalf("cursor was not forwarded: %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"response":[`))
+			for index := 0; index < 100; index++ {
+				if index > 0 {
+					_, _ = w.Write([]byte(","))
+				}
+				_, _ = fmt.Fprintf(w, `{"client_id":"%d","firstname":"Test","phone":"+77000000000"}`, index)
+			}
+			_, _ = w.Write([]byte(`]}`))
+		case "/spots.getSpots":
+			_, _ = w.Write([]byte(`{"response":null,"error":{"code":10,"message":"token expired"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	adapter := NewPosterAdapter(server.Client(), server.URL)
+	connection := Connection{Credentials: map[string]string{"accessToken": "token"}}
+	batch, err := adapter.ImportCustomers(context.Background(), connection, "40")
+	if err != nil || len(batch.Customers) != 100 || batch.NextCursor != "140" {
+		t.Fatalf("pagination failed: count=%d cursor=%q err=%v", len(batch.Customers), batch.NextCursor, err)
+	}
+	if _, err = adapter.ListLocations(context.Background(), connection); err == nil || !strings.Contains(err.Error(), "Poster API error") {
+		t.Fatalf("provider error was not propagated: %v", err)
+	}
+}
+
+func TestPosterCanonicalizesReturnsAndFallbackAmounts(t *testing.T) {
+	transaction := canonicalPosterTransaction(Connection{ID: "connection", CompanyID: "company"}, map[string]any{"transaction_id": "55", "status": "refund", "sum": "250000", "payed_sum": "0", "date_start": "2026-08-10T10:00:00Z"})
+	if transaction.Status != "cancelled" || transaction.NetAmount != 2500 || transaction.OccurredAt.IsZero() {
+		t.Fatalf("return normalization failed: %#v", transaction)
 	}
 }

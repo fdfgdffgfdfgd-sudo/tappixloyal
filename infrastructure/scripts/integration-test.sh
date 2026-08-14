@@ -155,6 +155,8 @@ docker compose exec -T postgres psql -U tappix -d tappix -c "INSERT INTO users(i
 docker compose exec -T postgres psql -U tappix -d tappix -c "INSERT INTO company_memberships(company_id,user_id,role,status) VALUES((SELECT id FROM companies WHERE slug='dentline'),'30000000-0000-0000-0000-000000000098','staff','active') ON CONFLICT(company_id,user_id) DO UPDATE SET role='staff',status='active',updated_at=now()" >/dev/null
 staff_login=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"approval.staff@tappix.test","password":"Approval2026!"}')
 staff_token=$(printf '%s' "$staff_login" | jq -r '.data.accessToken')
+staff_risk_list=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $staff_token" "$API_URL/risk-investigations")
+test "$staff_risk_list" = "403"
 approval_balance_before=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$dentline_customer" | jq -r '.data.totalPoints')
 approval_key="integration-manager-approval-$(date +%s)"
 approval_response=$(curl -fsS -X POST -H "Authorization: Bearer $staff_token" -H 'Content-Type: application/json' -d "{\"operation\":\"credit\",\"amount\":10001,\"description\":\"Корректировка крупного чека\",\"branchId\":\"$branch_id\",\"idempotencyKey\":\"$approval_key\"}" "$API_URL/customers/$dentline_customer/bonus")
@@ -192,6 +194,15 @@ test "$duplicate_visit" = "409"
 jq -e '.error.code == "DUPLICATE_VISIT"' "$fixture_dir/duplicate-visit.json" >/dev/null
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/risk" | jq -e '.data | any(.operation == "visit.create" and .severity == "blocked" and .status == "open")' >/dev/null
 docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM audit_logs WHERE company_id=(SELECT id FROM companies WHERE slug='dentline') AND action='security.operation_blocked' AND entity_id='$product_customer'" | grep -Eq '^[1-9][0-9]*$'
+risk_response=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/risk-investigations?status=open&severity=blocked")
+risk_id=$(printf '%s' "$risk_response" | jq -r --arg customer "$product_customer" '.data.items[] | select(.customer != "" and .ruleCode == "rapid_visit") | .id' | head -1)
+printf '%s' "$risk_response" | jq -e '.data.summary.open >= 1 and .data.summary.blocked >= 1' >/dev/null
+test -n "$risk_id"
+cross_risk_decision=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $docmed_token" -H 'Content-Type: application/json' -d '{"decision":"reviewed","resolution":"Cross tenant decision"}' "$API_URL/risk-investigations/$risk_id/decision")
+test "$cross_risk_decision" = "409"
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"decision":"reviewed","resolution":"Подтверждён повторный визит в течение защитного интервала"}' "$API_URL/risk-investigations/$risk_id/decision" | jq -e '.data.status == "reviewed"' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/risk-investigations?status=reviewed" | jq -e --arg id "$risk_id" '.data.items | any(.id == $id and .resolution != "")' >/dev/null
+docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM audit_logs WHERE company_id=(SELECT id FROM companies WHERE slug='dentline') AND action='security.investigation.closed' AND entity_id='$risk_id'" | grep -qx '1'
 reward_id=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/rewards" | jq -r '.data[] | select(.name=="Integration подарок" and .status=="available") | .id' | head -1)
 test -n "$reward_id"
 curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"reason\":\"Product DoD redemption\",\"branchId\":\"$branch_id\",\"idempotencyKey\":\"product-dod-redemption\"}" "$API_URL/rewards/$reward_id/redeem" | jq -e '.data.status == "redeemed"' >/dev/null
