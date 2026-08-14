@@ -9,6 +9,16 @@ async function expectNoSeriousAccessibilityViolations(page: Page) {
 
 test("tenant owner can enter the workspace and navigate core tasks", async ({ page }, testInfo) => {
   const mobile = testInfo.project.name.startsWith("mobile");
+  await page.goto("/customer");
+  await page.getByRole("button", { name: "Войти по резервному коду" }).click();
+  await page.getByLabel("Телефон").fill("+7 700 333 33 33");
+  await page.getByLabel("Резервный код").fill("1234");
+  await page.getByRole("button", { name: "Открыть карту" }).click();
+  await page.getByRole("button", { name: /Показать карту на кассе/ }).click();
+  const cashierDialog = page.getByRole("dialog", { name: "Покажите этот код сотруднику" });
+  const customerCode = (await cashierDialog.getByText(/^\d{3} \d{3}$/).textContent())?.trim();
+  expect(customerCode).toMatch(/^\d{3} \d{3}$/);
+
   await page.goto("/login");
   await page.getByLabel("Email").fill("armat@tappix.kz");
   await page.locator('input[name="password"]').fill("Tappix2026!");
@@ -34,7 +44,7 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await expect(page.getByRole("heading", { name: "Сканер гостя" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Включить камеру" })).toBeEnabled();
   await expect(page.getByText("Нет активного филиала")).toHaveCount(0);
-  await page.getByLabel("Введите код клиента").fill("025 392");
+  await page.getByLabel("Введите код клиента").fill(customerCode!);
   await page.getByRole("button", { name: "Найти клиента" }).click();
   await expect(page.getByRole("heading", { name: "Мадина Тест" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Отметить посещение" })).toBeEnabled();
