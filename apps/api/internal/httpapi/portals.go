@@ -48,8 +48,8 @@ func (a *api) customerRegister(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "VALIDATION_ERROR", "Заполните имя, фамилию, телефон и подтвердите согласие")
 		return
 	}
-	var company, device string
-	err := a.db.QueryRow(r.Context(), `UPDATE devices SET scans_count=scans_count+1,last_scanned_at=now() WHERE token=$1 AND is_active RETURNING company_id,id`, in.Token).Scan(&company, &device)
+	var company, device, branch string
+	err := a.db.QueryRow(r.Context(), `UPDATE devices SET scans_count=scans_count+1,last_scanned_at=now() WHERE token=$1 AND is_active RETURNING company_id,id,coalesce(branch_id::text,'')`, in.Token).Scan(&company, &device, &branch)
 	if errors.Is(err, pgx.ErrNoRows) {
 		fail(w, 404, "DEVICE_NOT_FOUND", "Ссылка регистрации недействительна")
 		return
@@ -107,6 +107,12 @@ func (a *api) customerRegister(w http.ResponseWriter, r *http.Request) {
 				err = nil
 			}
 		}
+	}
+	if err == nil && created {
+		err = appendCustomerEvent(r, tx, company, id, "customer.registered", branch, "customer-registered:"+id, map[string]any{"deviceId": device, "channel": "nfc_qr"})
+	}
+	if err == nil && created && points > 0 {
+		err = appendCustomerEvent(r, tx, company, id, "bonus.earned", branch, "welcome-bonus:"+id, map[string]any{"amount": points, "balanceAfter": points, "reason": "Приветственный бонус"})
 	}
 	if err != nil {
 		slog.Error("customer.registration.failed", "event_type", "customer.registration.failed", "tenant_id", company, "request_id", r.Header.Get("X-Request-ID"), "error", err)

@@ -1,4 +1,8 @@
 .customer-page { display: grid; align-content: start; gap: 10px; }
+.customer-almost { margin: 0 0 10px; padding: 12px 13px; border: 1px solid #d9cd7a; border-radius: 12px; background: #fff8cc; color: #3f3510; display: flex; align-items: center; gap: 10px; }
+.customer-almost > svg { width: 20px; color: #806b12; flex: none; }
+.customer-almost > span { display: grid; gap: 2px; }
+.customer-almost small { color: #675b28; }
 .customer-reward-card.reward-available { background: #116b45; }
 .customer-reward-history { min-height: 62px; padding: 11px 13px; border: 1px solid #e0e3e8; border-radius: 13px; background: #fff; display: flex; align-items: center; gap: 11px; }
 .customer-reward-history > svg { width: 18px; color: #16784a; }

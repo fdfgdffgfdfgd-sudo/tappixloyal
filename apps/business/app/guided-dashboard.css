@@ -1,0 +1,19 @@
+.guided-dashboard-card { padding: 28px; }
+.guided-dashboard-card .onboarding-head small { color: #5b4bce; font-size: 10px; font-weight: 850; letter-spacing: .12em; }
+.guided-dashboard-card .onboarding-head h2 { margin-top: 5px; font-size: 22px; letter-spacing: -.025em; }
+.guided-dashboard-card .onboarding-steps { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.guided-dashboard-card .onboarding-steps a { min-height: 72px; border: 1px solid #e2e8f0; background: #fff; align-items: flex-start; flex-direction: column; justify-content: center; }
+.guided-dashboard-card .onboarding-steps a > span:first-child { width: 22px; height: 22px; border-radius: 50%; background: #edf0f5; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
+.guided-dashboard-card .onboarding-steps a.current { border-color: #8b7fea; background: #f7f5ff; box-shadow: 0 0 0 2px #ebe8ff; }
+.guided-dashboard-card .onboarding-steps a.done { border-color: #bfe2ce; background: #f5fbf7; }
+.guided-dashboard-card .onboarding-steps a > svg:last-child { display: none; }
+.guided-dashboard-card > footer { margin-top: 18px; padding: 13px 14px; border-radius: 10px; background: #f1f5f9; color: #475569; display: flex; align-items: center; gap: 9px; }
+.guided-dashboard-card > footer svg { width: 18px; color: #5b4bce; flex: none; }
+.guided-dashboard-card > footer p { margin: 0; font-size: 13px; }
+.guided-dashboard-card ~ .v2-hero,
+.guided-dashboard-card ~ .v2-metrics,
+.guided-dashboard-card ~ .dashboard-decision-grid,
+.guided-dashboard-card ~ .quick-card,
+.guided-dashboard-card ~ .v2-feed-grid { display: none !important; }
+@media(max-width:920px){.guided-dashboard-card .onboarding-steps{grid-template-columns:1fr 1fr}.guided-dashboard-card .onboarding-head{align-items:flex-start}.guided-dashboard-card .guided-launch-link{white-space:nowrap}}
+@media(max-width:620px){.guided-dashboard-card{padding:19px}.guided-dashboard-card .onboarding-head{display:grid}.guided-dashboard-card .guided-launch-link{width:100%;justify-content:center}.guided-dashboard-card .onboarding-steps{grid-template-columns:1fr}.guided-dashboard-card .onboarding-steps a{min-height:60px;flex-direction:row;align-items:center;justify-content:flex-start}.guided-dashboard-card .onboarding-steps a>svg:last-child{display:block}}

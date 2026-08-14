@@ -629,6 +629,13 @@ func (a *api) evaluateRewardEvent(r *http.Request, tx pgx.Tx, tenant, customerID
 		if err != nil {
 			return issued, err
 		}
+		if status == "in_progress" && x.threshold-value == 1 {
+			key := fmt.Sprintf("reward-almost:%s:%s:%s:%d", x.id, customerID, cycle, currentValue)
+			err = appendCustomerEvent(r, tx, tenant, customerID, "reward.almost_unlocked", "", key, map[string]any{"ruleId": x.id, "current": value, "target": x.threshold, "remaining": 1})
+			if err != nil {
+				return issued, err
+			}
+		}
 		if status == "available" {
 			key := "rule:" + x.id + ":" + customerID + ":" + cycle
 			if x.mode == "repeat" {

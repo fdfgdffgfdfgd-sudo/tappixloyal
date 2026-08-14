@@ -47,6 +47,7 @@ import "./reports.css";
 import "./scanner-accessibility.css";
 import "./customer-timeline.css";
 import "./reward-lifecycle.css";
+import "./guided-dashboard.css";
 
 export const metadata: Metadata = { title: "Tappix — бизнес-панель", description: "Управление клиентами и программой лояльности" };
 

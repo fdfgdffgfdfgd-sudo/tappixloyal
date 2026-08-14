@@ -263,6 +263,7 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) dashboard(w http.ResponseWriter, r *http.Request) {
 	var customers, visitsToday, bonusIssued, bonusRedeemed, registrations, branches, employees, devices, scans, repeatCustomers, rewardsIssued int
+	var programConfigured, rewardConfigured, testCustomer bool
 	err := a.db.QueryRow(r.Context(), `SELECT count(*), count(*) FILTER (WHERE created_at::date=current_date) FROM customers WHERE company_id=$1 AND deleted_at IS NULL`, companyID(r)).Scan(&customers, &registrations)
 	if err == nil {
 		err = a.db.QueryRow(r.Context(), `SELECT count(*), coalesce(sum(points_added),0) FROM visits WHERE company_id=$1 AND created_at::date=current_date`, companyID(r)).Scan(&visitsToday, &bonusIssued)
@@ -275,6 +276,12 @@ func (a *api) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil {
 		err = a.db.QueryRow(r.Context(), `SELECT (SELECT count(*) FROM customers WHERE company_id=$1 AND deleted_at IS NULL AND total_visits>=2),(SELECT count(*) FROM customer_rewards WHERE company_id=$1 AND status IN('available','reserved','redeemed'))`, companyID(r)).Scan(&repeatCustomers, &rewardsIssued)
+	}
+	if err == nil {
+		err = a.db.QueryRow(r.Context(), `SELECT
+			EXISTS(SELECT 1 FROM company_settings WHERE company_id=$1 AND loyalty_reward_rule_id IS NOT NULL),
+			EXISTS(SELECT 1 FROM reward_definitions WHERE company_id=$1 AND is_active AND deleted_at IS NULL),
+			EXISTS(SELECT 1 FROM visits WHERE company_id=$1 AND reversed_at IS NULL)`, companyID(r)).Scan(&programConfigured, &rewardConfigured, &testCustomer)
 	}
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить dashboard")
@@ -310,7 +317,8 @@ func (a *api) dashboard(w http.ResponseWriter, r *http.Request) {
 	if scans > 0 {
 		conversion = float64(customers) / float64(scans) * 100
 	}
-	write(w, 200, envelope{Success: true, Data: map[string]any{"customers": customers, "visitsToday": visitsToday, "bonusIssued": bonusIssued, "bonusRedeemed": bonusRedeemed, "registrations": registrations, "repeatCustomers": repeatCustomers, "rewardsIssued": rewardsIssued, "nfcConversion": conversion, "latestCustomers": latestCustomers, "latestVisits": latestVisits, "onboarding": map[string]bool{"company": true, "branch": branches > 0, "team": employees > 1, "device": devices > 0, "firstCustomer": customers > 0}}})
+	launched := programConfigured && rewardConfigured && devices > 0 && testCustomer
+	write(w, 200, envelope{Success: true, Data: map[string]any{"customers": customers, "visitsToday": visitsToday, "bonusIssued": bonusIssued, "bonusRedeemed": bonusRedeemed, "registrations": registrations, "repeatCustomers": repeatCustomers, "rewardsIssued": rewardsIssued, "nfcConversion": conversion, "latestCustomers": latestCustomers, "latestVisits": latestVisits, "onboarding": map[string]bool{"program": programConfigured, "reward": rewardConfigured, "device": devices > 0, "testCustomer": testCustomer, "launched": launched}}})
 }
 
 func (a *api) listCustomers(w http.ResponseWriter, r *http.Request) {

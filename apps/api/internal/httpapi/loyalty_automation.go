@@ -182,6 +182,13 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:winback:'||c.id||':'||la.last_at::date,c.first_name,c.email,a.channel,a.subject,a.message,0
 		FROM campaign_automations a JOIN customers c ON c.company_id=a.company_id AND c.deleted_at IS NULL JOIN last_activity la ON la.company_id=c.company_id AND la.customer_id=c.id
 		WHERE a.is_active AND a.trigger_type='winback_30d' AND la.last_at<=now()-make_interval(days=>coalesce((a.settings->>'inactiveDays')::integer,30))
+		UNION ALL
+		SELECT a.id,a.company_id,c.id,a.trigger_type,'automation:event:'||e.id,c.first_name,c.email,a.channel,a.subject,a.message,0
+		FROM campaign_automations a JOIN customer_events e ON e.company_id=a.company_id
+		JOIN customers c ON c.company_id=e.company_id AND c.id=e.customer_id AND c.deleted_at IS NULL
+		WHERE a.is_active AND ((a.trigger_type='near_reward' AND e.event_type='reward.almost_unlocked')
+			OR (a.trigger_type='reward_unlocked' AND e.event_type='reward.unlocked')
+			OR (a.trigger_type='nfc_registration' AND e.event_type='customer.registered'))
 	) SELECT automation_id,company_id,customer_id,trigger_type,trigger_key,first_name,coalesce(email,''),channel,subject,message,amount FROM candidates WHERE ($1='' OR company_id::text=$1)`, onlyCompany)
 	if err != nil {
 		return 0, err
@@ -229,6 +236,12 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 			return processed, err
 		}
 		if status == "sent" {
+			_, err = db.Exec(ctx, `INSERT INTO customer_events(company_id,customer_id,event_type,source,properties,idempotency_key)
+				VALUES($1,$2,'campaign.sent','automation',jsonb_build_object('automationId',$3::text,'triggerType',$4::text),'campaign-sent:'||$5::text)
+				ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, item.companyID, item.customerID, item.automationID, item.triggerType, runID)
+			if err != nil {
+				return processed, err
+			}
 			processed++
 		}
 	}

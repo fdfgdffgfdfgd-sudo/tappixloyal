@@ -80,7 +80,7 @@ curl -fsS -X DELETE -H "Authorization: Bearer $token" "$API_URL/reports/schedule
 assert_get_json integration-connections /integration-connections '.data | type == "array"'
 assert_get_json webhook-deliveries /webhook-deliveries '.data | type == "array"'
 assert_get_json campaigns /campaigns '.data | type == "array"'
-assert_get_json campaign-automations /campaign-automations '.data | length == 3 and ([.[].triggerType] | sort) == (["birthday_bonus","bonus_expiry_3d","winback_30d"] | sort)'
+assert_get_json campaign-automations /campaign-automations '.data | length == 6 and ([.[].triggerType] | sort) == (["birthday_bonus","bonus_expiry_3d","winback_30d","near_reward","reward_unlocked","nfc_registration"] | sort)'
 invalid_holdout=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_URL/campaigns" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"name":"Invalid holdout","subject":"Test","body":"Test","segment":"all","holdoutPercent":3}')
 test "$invalid_holdout" = "422"
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/loyalty/inactive?days=30" | jq -e '.data.total >= 0 and (.data.items | type == "array")' >/dev/null
@@ -157,6 +157,7 @@ registered=$(curl -fsS -c "$product_cookies" -X POST "$API_URL/customer/register
 product_customer=$(printf '%s' "$registered" | jq -r '.data.customerId')
 docker compose exec -T postgres psql -U tappix -d tappix -c "UPDATE customers SET total_visits=1 WHERE id='$product_customer'" >/dev/null
 curl -fsS -b "$product_cookies" "$API_URL/customer/wallet" | jq -e '.data.loyalty.mode == "stamps" and .data.loyalty.progress == 1 and .data.loyalty.remaining == 1 and .data.loyalty.rewardTitle == "Integration подарок"' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/timeline" | jq -e '.data | any(.type == "customer.registered")' >/dev/null
 visit=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"customerId\":\"$product_customer\",\"branchId\":\"$branch_id\",\"comment\":\"Product DoD\"}" "$API_URL/visits")
 printf '%s' "$visit" | jq -e '.data.totalVisits == 2 and .data.reward == "1 наград"' >/dev/null
 reward_id=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/rewards" | jq -r '.data[] | select(.name=="Integration подарок" and .status=="available") | .id' | head -1)

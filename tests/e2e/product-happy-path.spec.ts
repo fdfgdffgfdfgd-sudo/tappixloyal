@@ -74,3 +74,15 @@ test("customer opens the wallet and shows cashier QR with fallback code", async 
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(hasHorizontalOverflow).toBe(false);
 });
+
+test("new business sees guided setup instead of empty metrics", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@docmed.kz");
+  await page.locator('input[name="password"]').fill("DocMed2026!");
+  await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Подготовьте программу к первому гостю" })).toBeVisible();
+  await expect(page.getByText(/из 5 шагов выполнено/)).toBeVisible();
+  await expect(page.locator(".v2-metrics")).toBeHidden();
+  await expectNoSeriousAccessibilityViolations(page);
+});
