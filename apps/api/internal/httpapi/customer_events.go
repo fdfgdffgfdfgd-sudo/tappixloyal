@@ -21,6 +21,18 @@ func appendCustomerEvent(r *http.Request, tx pgx.Tx, companyID, customerID, even
 	return err
 }
 
+func resolveEventBranch(r *http.Request, tx pgx.Tx, tenant, requested string) (string, error) {
+	claims, _ := r.Context().Value(identityKey).(tokenClaims)
+	if requested != "" {
+		var id string
+		err := tx.QueryRow(r.Context(), `SELECT b.id FROM branches b WHERE b.company_id=$1 AND b.id=$2 AND b.deleted_at IS NULL AND b.is_active AND ($3<>'employee' OR b.id=(SELECT branch_id FROM users WHERE company_id=$1 AND id=$4))`, tenant, requested, claims.Role, claims.Subject).Scan(&id)
+		return id, err
+	}
+	var id string
+	err := tx.QueryRow(r.Context(), `SELECT coalesce(branch_id::text,'') FROM users WHERE company_id=$1 AND id=$2`, tenant, claims.Subject).Scan(&id)
+	return id, err
+}
+
 func (a *api) customerTimeline(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(r.Context(), `SELECT e.id,e.event_type,e.occurred_at,coalesce(e.source,''),e.properties,coalesce(b.name,'')
 		FROM customer_events e LEFT JOIN branches b ON b.id=e.branch_id AND b.company_id=e.company_id

@@ -85,6 +85,11 @@ func processReferralRewards(ctx context.Context, db *pgxpool.Pool, onlyCompany s
 			if err == nil && newLedger {
 				_, err = tx.Exec(ctx, `UPDATE customers SET total_points=total_points+$3,updated_at=now() WHERE company_id=$1 AND id=$2`, x.company, x.customer, x.amount)
 			}
+			if err == nil && newLedger {
+				_, err = tx.Exec(ctx, `INSERT INTO customer_events(company_id,customer_id,event_type,source,properties,idempotency_key)
+					VALUES($1,$2,'bonus.earned','referral',jsonb_build_object('amount',$3::integer,'balanceAfter',$4::integer,'reason','Награда за рекомендацию','attributionId',$5::text),$6)
+					ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, x.company, x.customer, x.amount, balance+x.amount, x.attribution, "referral-bonus:"+x.key)
+			}
 			if err == nil {
 				_, err = tx.Exec(ctx, `UPDATE referral_rewards SET status='issued',issued_at=now(),bonus_ledger_id=nullif($3,'')::uuid WHERE company_id=$1 AND id=$2`, x.company, x.id, ledgerID)
 			}
@@ -147,6 +152,11 @@ func processBirthdayBonuses(ctx context.Context, db *pgxpool.Pool, onlyCompany s
 			if e == nil {
 				e = posintegration.IssueBonusLot(ctx, tx, x.company, x.id, ledgerID, "", x.amount)
 			}
+		}
+		if e == nil {
+			_, e = tx.Exec(ctx, `INSERT INTO customer_events(company_id,customer_id,event_type,source,properties,idempotency_key)
+				VALUES($1,$2,'bonus.earned','automation',jsonb_build_object('amount',$3::integer,'balanceAfter',$4::integer,'reason','Бонус на день рождения'),$5)
+				ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, x.company, x.id, x.amount, balance, "birthday-bonus:"+key)
 		}
 		if e == nil && tx.Commit(ctx) == nil {
 			processed++

@@ -3,11 +3,13 @@ package httpapi
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	posintegration "github.com/tappix/platform/apps/api/internal/integration"
 )
 
@@ -159,11 +161,28 @@ func (a *api) publicReferral(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	anonymousID := truncate(strings.TrimSpace(r.URL.Query().Get("anonymousId")), 160)
+	tx, err := a.db.Begin(r.Context())
+	if err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось сохранить приглашение")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var attributionID string
 	if anonymousID != "" {
-		_, _ = a.db.Exec(r.Context(), `INSERT INTO referral_attributions(company_id,program_id,referrer_customer_id,referral_code,anonymous_id,source,metadata)
-			SELECT $1,$2,$3,$4,$5,'share_link',jsonb_build_object('userAgent',$6) WHERE NOT EXISTS(SELECT 1 FROM referral_attributions WHERE company_id=$1 AND program_id=$2 AND referral_code=$4 AND anonymous_id=$5)`, companyID, programID, customerID, code, anonymousID, truncate(r.UserAgent(), 240))
+		err = tx.QueryRow(r.Context(), `INSERT INTO referral_attributions(company_id,program_id,referrer_customer_id,referral_code,anonymous_id,source,metadata)
+			SELECT $1,$2,$3,$4,$5,'share_link',jsonb_build_object('userAgent',$6) WHERE NOT EXISTS(SELECT 1 FROM referral_attributions WHERE company_id=$1 AND program_id=$2 AND referral_code=$4 AND anonymous_id=$5) RETURNING id`, companyID, programID, customerID, code, anonymousID, truncate(r.UserAgent(), 240)).Scan(&attributionID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = tx.QueryRow(r.Context(), `SELECT id FROM referral_attributions WHERE company_id=$1 AND program_id=$2 AND referral_code=$3 AND anonymous_id=$4 ORDER BY clicked_at DESC LIMIT 1`, companyID, programID, code, anonymousID).Scan(&attributionID)
+		}
 	} else {
-		_, _ = a.db.Exec(r.Context(), `INSERT INTO referral_attributions(company_id,program_id,referrer_customer_id,referral_code,source,metadata) VALUES($1,$2,$3,$4,'share_link',jsonb_build_object('userAgent',$5))`, companyID, programID, customerID, code, truncate(r.UserAgent(), 240))
+		err = tx.QueryRow(r.Context(), `INSERT INTO referral_attributions(company_id,program_id,referrer_customer_id,referral_code,source,metadata) VALUES($1,$2,$3,$4,'share_link',jsonb_build_object('userAgent',$5)) RETURNING id`, companyID, programID, customerID, code, truncate(r.UserAgent(), 240)).Scan(&attributionID)
+	}
+	if err == nil {
+		err = appendCustomerEvent(r, tx, companyID, customerID, "referral.created", "", "referral-created:"+attributionID, map[string]any{"attributionId": attributionID, "referralCode": code, "source": "share_link"})
+	}
+	if err != nil || tx.Commit(r.Context()) != nil {
+		fail(w, 500, "REFERRAL_TRACKING_FAILED", "Не удалось сохранить приглашение")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]string{"token": token, "company": company, "referralCode": code}})
 }

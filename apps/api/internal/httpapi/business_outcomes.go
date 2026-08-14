@@ -90,7 +90,7 @@ func (a *api) businessOutcomes(w http.ResponseWriter, r *http.Request) {
 	), transaction_totals AS (
 		SELECT branch_id,coalesce(sum(net_amount),0) revenue FROM sales_transactions WHERE company_id=$1 AND branch_id IS NOT NULL AND status='completed' AND NOT sandbox AND occurred_at>=now()-make_interval(days=>$2) GROUP BY branch_id
 	), reward_totals AS (
-		SELECT u.branch_id,count(*) rewards FROM reward_transactions rt JOIN users u ON u.id=rt.actor_id AND u.company_id=rt.company_id WHERE rt.company_id=$1 AND rt.operation='redeemed' AND u.branch_id IS NOT NULL AND rt.created_at>=now()-make_interval(days=>$2) GROUP BY u.branch_id
+		SELECT branch_id,count(*) rewards FROM customer_events WHERE company_id=$1 AND event_type='reward.redeemed' AND branch_id IS NOT NULL AND NOT sandbox AND occurred_at>=now()-make_interval(days=>$2) GROUP BY branch_id
 	) SELECT b.id,b.name,coalesce(e.customers,0),coalesce(e.returned,0),coalesce(e.visits,0),coalesce(t.revenue,0),coalesce(r.rewards,0)
 	FROM branches b LEFT JOIN event_totals e ON e.branch_id=b.id LEFT JOIN transaction_totals t ON t.branch_id=b.id LEFT JOIN reward_totals r ON r.branch_id=b.id
 	WHERE b.company_id=$1 AND b.deleted_at IS NULL ORDER BY coalesce(t.revenue,0) DESC,coalesce(e.returned,0) DESC,b.name`, tenant, days)

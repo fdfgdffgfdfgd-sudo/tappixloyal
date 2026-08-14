@@ -14,6 +14,7 @@ import (
 type rewardStatusInput struct {
 	Status             string `json:"status"`
 	Reason             string `json:"reason"`
+	BranchID           string `json:"branchId"`
 	ReservationMinutes int    `json:"reservationMinutes"`
 	IdempotencyKey     string `json:"idempotencyKey"`
 }
@@ -408,6 +409,11 @@ func (a *api) transitionReward(w http.ResponseWriter, r *http.Request, target st
 		fail(w, 409, "REWARD_INVALID_TRANSITION", "Награда уже обработана или переход статуса запрещён")
 		return
 	}
+	eventBranch, branchErr := resolveEventBranch(r, tx, tenant, strings.TrimSpace(in.BranchID))
+	if branchErr != nil {
+		fail(w, 404, "BRANCH_NOT_FOUND", "Активный филиал не найден или недоступен сотруднику")
+		return
+	}
 	var reservedAt, reservedTo, redeemedAt, cancelledAt any
 	var reservedBy, redeemedBy, cancelledBy any
 	if target == "reserved" {
@@ -428,7 +434,7 @@ func (a *api) transitionReward(w http.ResponseWriter, r *http.Request, target st
 		_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$5,$7,nullif($8,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, r.PathValue("id"), customerID, claims.Subject, target, status, strings.TrimSpace(in.Reason), idempotency)
 	}
 	if err == nil && target == "redeemed" {
-		err = appendCustomerEvent(r, tx, tenant, customerID, "reward.redeemed", "", "reward-redeemed:"+r.PathValue("id"), map[string]any{"rewardId": r.PathValue("id"), "reason": strings.TrimSpace(in.Reason)})
+		err = appendCustomerEvent(r, tx, tenant, customerID, "reward.redeemed", eventBranch, "reward-redeemed:"+r.PathValue("id"), map[string]any{"rewardId": r.PathValue("id"), "reason": strings.TrimSpace(in.Reason)})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "REWARD_TRANSITION_FAILED", "Не удалось изменить статус награды")
@@ -504,6 +510,11 @@ func (a *api) transitionRewardDirect(w http.ResponseWriter, r *http.Request, tar
 		fail(w, 409, "REWARD_INVALID_TRANSITION", "Награда недоступна или уже обработана")
 		return
 	}
+	eventBranch, branchErr := resolveEventBranch(r, tx, tenant, strings.TrimSpace(in.BranchID))
+	if branchErr != nil {
+		fail(w, 404, "BRANCH_NOT_FOUND", "Активный филиал не найден или недоступен сотруднику")
+		return
+	}
 	reservedUntil := any(nil)
 	if target == "reserved" {
 		reservedUntil = now.Add(time.Duration(in.ReservationMinutes) * time.Minute)
@@ -513,7 +524,7 @@ func (a *api) transitionRewardDirect(w http.ResponseWriter, r *http.Request, tar
 		_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$5,$7,nullif($8,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, r.PathValue("id"), customerID, claims.Subject, target, status, in.Reason, idempotency)
 	}
 	if err == nil && target == "redeemed" {
-		err = appendCustomerEvent(r, tx, tenant, customerID, "reward.redeemed", "", "reward-redeemed:"+r.PathValue("id"), map[string]any{"rewardId": r.PathValue("id"), "reason": strings.TrimSpace(in.Reason)})
+		err = appendCustomerEvent(r, tx, tenant, customerID, "reward.redeemed", eventBranch, "reward-redeemed:"+r.PathValue("id"), map[string]any{"rewardId": r.PathValue("id"), "reason": strings.TrimSpace(in.Reason)})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "REWARD_TRANSITION_FAILED", "Не удалось изменить статус награды")
@@ -534,34 +545,51 @@ func (a *api) expireRewards(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось освободить резервы")
 		return
 	}
-	released := 0
+	type releasedReward struct{ id, customerID string }
+	releasedItems := []releasedReward{}
 	for releasedRows.Next() {
 		var id, cid string
 		if releasedRows.Scan(&id, &cid) == nil {
-			released++
-			_, _ = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason) VALUES($1,$2,$3,$4,'reservation_released','reserved','available','Истёк срок резерва')`, companyID(r), id, cid, identity(r).Subject)
+			releasedItems = append(releasedItems, releasedReward{id: id, customerID: cid})
 		}
 	}
 	releasedRows.Close()
+	for _, item := range releasedItems {
+		if _, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason) VALUES($1,$2,$3,$4,'reservation_released','reserved','available','Истёк срок резерва')`, companyID(r), item.id, item.customerID, identity(r).Subject); err != nil {
+			fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось записать освобождение награды")
+			return
+		}
+	}
 	rows, err := tx.Query(r.Context(), `UPDATE customer_rewards SET status='expired' WHERE company_id=$1 AND status IN ('available','reserved') AND expires_at<=now() RETURNING id,customer_id`, companyID(r))
 	if err != nil {
 		fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось завершить просроченные награды")
 		return
 	}
-	count := 0
+	type expiredReward struct{ id, customerID string }
+	expired := []expiredReward{}
 	for rows.Next() {
 		var id, cid string
 		if rows.Scan(&id, &cid) == nil {
-			count++
-			_, _ = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason) VALUES($1,$2,$3,$4,'expired','available','expired','Истёк срок действия')`, companyID(r), id, cid, identity(r).Subject)
+			expired = append(expired, expiredReward{id: id, customerID: cid})
 		}
 	}
 	rows.Close()
+	for _, item := range expired {
+		var name string
+		_ = tx.QueryRow(r.Context(), `SELECT coalesce(d.name,cr.name,'Награда') FROM customer_rewards cr LEFT JOIN reward_definitions d ON d.id=cr.definition_id AND d.company_id=cr.company_id WHERE cr.company_id=$1 AND cr.id=$2`, companyID(r), item.id).Scan(&name)
+		if _, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason) VALUES($1,$2,$3,$4,'expired','available','expired','Истёк срок действия')`, companyID(r), item.id, item.customerID, identity(r).Subject); err == nil {
+			err = appendCustomerEvent(r, tx, companyID(r), item.customerID, "reward.expired", "", "reward-expired:"+item.id, map[string]any{"rewardId": item.id, "name": name})
+		}
+		if err != nil {
+			fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось записать историю просроченной награды")
+			return
+		}
+	}
 	if tx.Commit(r.Context()) != nil {
 		fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось сохранить обработку")
 		return
 	}
-	write(w, 200, envelope{Success: true, Data: map[string]int{"expired": count, "reservationsReleased": released}})
+	write(w, 200, envelope{Success: true, Data: map[string]int{"expired": len(expired), "reservationsReleased": len(releasedItems)}})
 }
 
 func (a *api) rewardTransactions(w http.ResponseWriter, r *http.Request) {

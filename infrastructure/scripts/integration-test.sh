@@ -171,12 +171,16 @@ curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_custome
 docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM audit_logs WHERE company_id=(SELECT id FROM companies WHERE slug='dentline') AND action='security.operation_blocked' AND entity_id='$product_customer'" | grep -Eq '^[1-9][0-9]*$'
 reward_id=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/rewards" | jq -r '.data[] | select(.name=="Integration подарок" and .status=="available") | .id' | head -1)
 test -n "$reward_id"
-curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"reason":"Product DoD redemption","idempotencyKey":"product-dod-redemption"}' "$API_URL/rewards/$reward_id/redeem" | jq -e '.data.status == "redeemed"' >/dev/null
-curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"reason":"Product DoD redemption","idempotencyKey":"product-dod-redemption"}' "$API_URL/rewards/$reward_id/redeem" | jq -e '.data.status == "redeemed" and .data.idempotentReplay == true' >/dev/null
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"reason\":\"Product DoD redemption\",\"branchId\":\"$branch_id\",\"idempotencyKey\":\"product-dod-redemption\"}" "$API_URL/rewards/$reward_id/redeem" | jq -e '.data.status == "redeemed"' >/dev/null
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"reason\":\"Product DoD redemption\",\"branchId\":\"$branch_id\",\"idempotencyKey\":\"product-dod-redemption\"}" "$API_URL/rewards/$reward_id/redeem" | jq -e '.data.status == "redeemed" and .data.idempotentReplay == true' >/dev/null
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/rewards/$reward_id/transactions" | jq -e '.data | any(.operation == "issued") and any(.operation == "redeemed")' >/dev/null
 docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM reward_transactions WHERE reward_id='$reward_id' AND operation='redeemed'" | grep -qx '1'
 curl -fsS -b "$product_cookies" "$API_URL/customer/rewards" | jq -e '.data | any(.name == "Integration подарок" and .status == "redeemed")' >/dev/null
-curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/timeline" | jq -e '([.data[].type] | contains(["visit.completed","bonus.earned","reward.unlocked","reward.redeemed"]))' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/timeline" | jq -e '.data as $events | ([$events[].type] | contains(["visit.completed","bonus.earned","reward.unlocked","reward.redeemed"])) and any($events[]; .type == "reward.redeemed" and .branch != "")' >/dev/null
+expired_reward=$(docker compose exec -T postgres psql -U tappix -d tappix -Atc "INSERT INTO customer_rewards(company_id,customer_id,name,status,expires_at) VALUES((SELECT id FROM companies WHERE slug='dentline'),'$product_customer','Просроченная тестовая награда','available',now()-interval '1 minute') RETURNING id" | head -1)
+test -n "$expired_reward"
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/rewards/expire" | jq -e '.data.expired >= 1' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/timeline" | jq -e '.data | any(.type == "reward.expired" and .properties.name == "Просроченная тестовая награда")' >/dev/null
 curl -fsS -X PATCH -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$original_portal" "$API_URL/settings/guest-portal" >/dev/null
 curl -fsS -X DELETE -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer" | jq -e '.data.archived == true' >/dev/null
 

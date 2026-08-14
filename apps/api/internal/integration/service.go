@@ -204,6 +204,12 @@ func applyReferralQualification(ctx context.Context, tx pgx.Tx, companyID, custo
 	if err != nil {
 		return err
 	}
+	_, err = tx.Exec(ctx, `INSERT INTO customer_events(company_id,customer_id,event_type,transaction_id,source,properties,idempotency_key)
+		VALUES($1,$2,'referral.converted',$3,'referral',jsonb_build_object('attributionId',$4::text,'referredCustomerId',$5::text,'netAmount',$6::numeric),$7)
+		ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, companyID, referrerID, transactionID, attributionID, customerID, netAmount, "referral-converted-referrer:"+attributionID)
+	if err != nil {
+		return err
+	}
 	availableAt := fmt.Sprintf("now()+make_interval(days=>%d)", delayDays)
 	_, err = tx.Exec(ctx, `INSERT INTO referral_rewards(company_id,attribution_id,beneficiary_customer_id,beneficiary_type,reward_type,reward_value,status,available_at,idempotency_key)
 		SELECT $1,$2,$3,'referrer','points',$4,'pending',`+availableAt+`,$5 WHERE $4>0
@@ -578,6 +584,9 @@ func applyLoyalty(ctx context.Context, tx pgx.Tx, in CanonicalTransaction, trans
 		if err = ConsumeBonusLots(ctx, tx, in.CompanyID, customerID, debitLedgerID, transactionID, in.BonusSpent); err != nil {
 			return "", err
 		}
+		if err = appendLoyaltyEvent(ctx, tx, in, customerID, transactionID, branchID, "bonus.spent", "pos-bonus-spent:"+in.Provider+":"+in.ExternalID, map[string]any{"amount": in.BonusSpent, "balanceAfter": balance, "reason": "Списание по POS-чеку"}); err != nil {
+			return "", err
+		}
 	}
 	if in.BonusEarned > 0 {
 		balance += in.BonusEarned
@@ -590,9 +599,26 @@ func applyLoyalty(ctx context.Context, tx pgx.Tx, in CanonicalTransaction, trans
 		if err = IssueBonusLot(ctx, tx, in.CompanyID, customerID, creditLedgerID, transactionID, in.BonusEarned); err != nil {
 			return "", err
 		}
+		if err = appendLoyaltyEvent(ctx, tx, in, customerID, transactionID, branchID, "bonus.earned", "pos-bonus-earned:"+in.Provider+":"+in.ExternalID, map[string]any{"amount": in.BonusEarned, "balanceAfter": balance, "reason": "Начисление по POS-чеку"}); err != nil {
+			return "", err
+		}
 	}
 	_, err = tx.Exec(ctx, `UPDATE customers SET total_points=$3,total_visits=total_visits+1,updated_at=now() WHERE company_id=$1 AND id=$2`, in.CompanyID, customerID, balance)
+	if err == nil {
+		err = appendLoyaltyEvent(ctx, tx, in, customerID, transactionID, branchID, "visit.completed", "pos-visit:"+in.Provider+":"+in.ExternalID, map[string]any{"visitId": visitID, "pointsAdded": in.BonusEarned, "source": "pos"})
+	}
 	return visitID, err
+}
+
+func appendLoyaltyEvent(ctx context.Context, tx pgx.Tx, in CanonicalTransaction, customerID, transactionID, branchID, eventType, idempotencyKey string, properties map[string]any) error {
+	payload, err := json.Marshal(properties)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO customer_events(company_id,customer_id,event_type,occurred_at,branch_id,transaction_id,source,properties,idempotency_key)
+		VALUES($1,$2,$3,$4,nullif($5,'')::uuid,$6,$7,$8::jsonb,$9)
+		ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, in.CompanyID, customerID, eventType, in.OccurredAt, branchID, transactionID, in.Source, payload, idempotencyKey)
+	return err
 }
 
 func IssueBonusLot(ctx context.Context, tx pgx.Tx, companyID, customerID, creditLedgerID, transactionID string, amount int) error {

@@ -12,6 +12,7 @@
 .customer-event-timeline > article small { color: #64748b; }
 .customer-event-timeline > article p { margin: 0; color: #64748b; font-size: 12px; }
 .customer-event-timeline > article b { font-variant-numeric: tabular-nums; color: #16784a; }
+.customer-event-timeline > article b.spent { color: #a33b4c; }
 @media(max-width:620px){.customer-event-timeline{padding:0 16px 8px}.customer-event-timeline>article{grid-template-columns:34px 1fr}.customer-event-timeline>article>b{grid-column:2}}
 .customer-risk-callout { padding: 15px 17px; border: 1px solid #f0c7ca; border-radius: 12px; background: #fff7f7; color: #7f1d2d; display: flex; align-items: center; gap: 12px; }
 .customer-risk-callout > svg { width: 22px; flex: none; }

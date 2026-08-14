@@ -22,6 +22,7 @@ type bonusInput struct {
 	Operation   string `json:"operation"`
 	Amount      int    `json:"amount"`
 	Description string `json:"description"`
+	BranchID    string `json:"branchId"`
 }
 
 func (a *api) updateCustomer(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +136,11 @@ func (a *api) customerBonus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
+	eventBranch, branchErr := resolveEventBranch(r, tx, tenant, strings.TrimSpace(in.BranchID))
+	if branchErr != nil {
+		fail(w, 404, "BRANCH_NOT_FOUND", "Активный филиал не найден или недоступен сотруднику")
+		return
+	}
 	var balance int
 	err = tx.QueryRow(r.Context(), `SELECT total_points FROM customers WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, tenant, r.PathValue("id")).Scan(&balance)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -164,7 +170,7 @@ func (a *api) customerBonus(w http.ResponseWriter, r *http.Request) {
 			if in.Operation == "debit" {
 				eventType = "bonus.spent"
 			}
-			err = appendCustomerEvent(r, tx, tenant, r.PathValue("id"), eventType, "", "bonus:"+ledgerID, map[string]any{"amount": in.Amount, "balanceAfter": next, "reason": in.Description, "manual": true})
+			err = appendCustomerEvent(r, tx, tenant, r.PathValue("id"), eventType, eventBranch, "bonus:"+ledgerID, map[string]any{"amount": in.Amount, "balanceAfter": next, "reason": in.Description, "manual": true})
 		}
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {

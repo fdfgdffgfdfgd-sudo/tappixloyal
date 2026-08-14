@@ -739,9 +739,11 @@ export function CustomerDetailPage({ id }: { id: string }) {
         <section className="data-card customer-event-timeline">
           <header><div><h2>История клиента</h2><p>Все важные события в одной ленте</p></div><Clock3/></header>
           {timeline.map((event) => {
-            const labels: Record<string,string> = {"customer.registered":"Зарегистрировался через NFC или QR","visit.completed":"Посещение","purchase.completed":"Покупка","bonus.earned":"Бонусы начислены","bonus.spent":"Бонусы списаны","reward.almost_unlocked":"До награды остался один визит","reward.unlocked":"Награда стала доступна","reward.redeemed":"Награда использована","referral.created":"Пригласил друга","referral.converted":"Друг совершил покупку","campaign.sent":"Получил сообщение","campaign.opened":"Открыл сообщение","customer.returned":"Вернулся"};
+            const labels: Record<string,string> = {"customer.registered":"Зарегистрировался через NFC или QR","visit.completed":"Посещение","purchase.completed":"Покупка","bonus.earned":"Бонусы начислены","bonus.spent":"Бонусы списаны","reward.almost_unlocked":"До награды остался один визит","reward.unlocked":"Награда стала доступна","reward.redeemed":"Награда использована","reward.expired":"Срок награды истёк","referral.created":"Поделился приглашением","referral.converted":"Друг совершил покупку","campaign.sent":"Получил сообщение","campaign.opened":"Открыл сообщение","customer.returned":"Вернулся"};
             const amount=Number(event.properties.amount||event.properties.pointsAdded||0);
-            return <article key={event.id}><span><Clock3/></span><div><strong>{labels[event.type]||event.type}</strong><small>{new Date(event.occurredAt).toLocaleString("ru-RU")}{event.branch?` · ${event.branch}`:""}</small>{event.properties.reason&&<p>{String(event.properties.reason)}</p>}</div>{amount>0&&<b>{event.type==="bonus.spent"?"−":"+"}{amount}</b>}</article>;
+            const detail=event.properties.reason||event.properties.name;
+            const netAmount=Number(event.properties.netAmount||0);
+            return <article key={event.id}><span><Clock3/></span><div><strong>{labels[event.type]||event.type}</strong><small>{new Date(event.occurredAt).toLocaleString("ru-RU")}{event.branch?` · ${event.branch}`:""}</small>{detail&&<p>{String(detail)}</p>}</div>{amount>0?<b className={event.type==="bonus.spent"?"spent":""}>{event.type==="bonus.spent"?"−":"+"}{amount}</b>:netAmount>0?<b>{Math.round(netAmount).toLocaleString("ru-RU")} ₸</b>:null}</article>;
           })}
           {!timeline.length&&<div className="zero"><Clock3/><strong>История начнётся с первого действия</strong><p>Регистрация, посещения, покупки, бонусы и награды появятся здесь по времени.</p></div>}
         </section>
