@@ -40,12 +40,20 @@ type apiKeyInput struct {
 }
 
 func (a *api) getWebsite(w http.ResponseWriter, r *http.Request) {
-	var in websiteInput
+	// Services must serialise as [] and never null: the panel calls services.join().
+	in := websiteInput{Services: []string{}}
 	var contacts map[string]any
 	err := a.db.QueryRow(r.Context(), `SELECT headline,description,services,contacts,published FROM website_settings WHERE company_id=$1`, companyID(r)).Scan(&in.Headline, &in.Description, &in.Services, &contacts, &in.Published)
-	if err != nil {
-		write(w, 200, envelope{Success: true, Data: in})
+	if errors.Is(err, pgx.ErrNoRows) {
+		write(w, 200, envelope{Success: true, Data: websiteInput{Services: []string{}}})
 		return
+	}
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить настройки сайта")
+		return
+	}
+	if in.Services == nil {
+		in.Services = []string{}
 	}
 	in.Phone, _ = contacts["phone"].(string)
 	in.Address, _ = contacts["address"].(string)
@@ -76,6 +84,13 @@ func (a *api) publicWebsite(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		fail(w, 404, "SITE_NOT_FOUND", "Сайт не опубликован")
 		return
+	}
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить сайт")
+		return
+	}
+	if services == nil {
+		services = []string{}
 	}
 	rows, _ := a.db.Query(r.Context(), `SELECT id,name,address FROM branches WHERE company_id=$1 AND is_active AND deleted_at IS NULL ORDER BY name`, companyID)
 	branches := []map[string]string{}
