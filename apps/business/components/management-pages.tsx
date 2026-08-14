@@ -39,6 +39,7 @@ import { RewardBuilder } from "./reward-builder";
 import { ProgramMechanics } from "./program-mechanics";
 export { NFCQRManager as DevicesPage } from "./nfc-qr-manager";
 import { api, download } from "@/lib/api";
+import { customerLevelLabel, subscriptionStatusLabel } from "@/lib/labels";
 import { SectionShell } from "./section-shell";
 
 type Customer = {
@@ -210,9 +211,9 @@ export function CustomersPage() {
           Уровень
           <select value={level} onChange={(e) => setLevel(e.target.value)}>
             <option value="">Все уровни</option>
-            <option value="basic">Basic</option>
-            <option value="silver">Silver</option>
-            <option value="gold">Gold</option>
+            <option value="basic">Базовый</option>
+            <option value="silver">Серебряный</option>
+            <option value="gold">Золотой</option>
             <option value="vip">VIP</option>
           </select>
         </label>
@@ -293,7 +294,7 @@ export function CustomersPage() {
                 </td>
                 <td data-label="Телефон">{c.phone}</td>
                 <td data-label="Уровень">
-                  <span className="tag">{c.level}</span>
+                  <span className="tag">{customerLevelLabel(c.level)}</span>
                 </td>
                 <td data-label="Сегмент">
                   <span
@@ -584,7 +585,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
         </article>
         <article>
           <span>Уровень</span>
-          <strong>{value.level}</strong>
+          <strong>{customerLevelLabel(value.level)}</strong>
         </article>
         <article className="customer-segment-card">
           <span>Сегмент</span>
@@ -677,9 +678,9 @@ export function CustomerDetailPage({ id }: { id: string }) {
                 value={value.level}
                 onChange={(e) => setValue({ ...value, level: e.target.value })}
               >
-                <option value="basic">Basic</option>
-                <option value="silver">Silver</option>
-                <option value="gold">Gold</option>
+                <option value="basic">Базовый</option>
+                <option value="silver">Серебряный</option>
+                <option value="gold">Золотой</option>
                 <option value="vip">VIP</option>
               </select>
             </label>
@@ -1746,7 +1747,7 @@ export function SubscriptionPage() {
             </strong>
             <div className="subscription-meta">
               <span>
-                Статус <b>{value.status}</b>
+                Статус <b>{subscriptionStatusLabel(value.status)}</b>
               </span>
               <span>
                 Следующее продление{" "}
