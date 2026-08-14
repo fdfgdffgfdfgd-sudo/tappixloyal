@@ -9,7 +9,7 @@ async function expectNoSeriousAccessibilityViolations(page: Page) {
 
 test("tenant owner can enter the workspace and navigate core tasks", async ({ page }, testInfo) => {
   const mobile = testInfo.project.name.startsWith("mobile");
-  await page.goto("/customer");
+  await page.goto("/customer?company=dentline");
   await page.getByRole("button", { name: "Войти по резервному коду" }).click();
   await page.getByLabel("Телефон").fill("+7 700 333 33 33");
   await page.getByLabel("Резервный код").fill("1234");
@@ -81,7 +81,7 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
 });
 
 test("customer opens the wallet and shows cashier QR with fallback code", async ({ page }) => {
-  await page.goto("/customer");
+  await page.goto("/customer?company=dentline");
   await page.getByRole("button", { name: "Войти по резервному коду" }).click();
   await page.getByLabel("Телефон").fill("+7 700 333 33 33");
   await page.getByLabel("Резервный код").fill("1234");
