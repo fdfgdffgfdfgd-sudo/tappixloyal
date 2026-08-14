@@ -194,6 +194,8 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("GET /api/v1/reports/runs/{id}/download", a.requirePermission("analytics.read", http.HandlerFunc(a.downloadReportRun)))
 	protected.Handle("POST /api/v1/loyalty/expire-bonuses", a.requireRoles(http.HandlerFunc(a.expireBonusLotsNow), "company_owner"))
 	protected.Handle("GET /api/v1/audit", a.requireRoles(http.HandlerFunc(a.auditList), "company_owner", "super_admin"))
+	protected.Handle("GET /api/v1/operation-approvals", a.requireRoles(http.HandlerFunc(a.listOperationApprovals), "company_owner"))
+	protected.Handle("POST /api/v1/operation-approvals/{id}/decision", a.requireRoles(http.HandlerFunc(a.decideOperationApproval), "company_owner"))
 	protected.Handle("GET /api/v1/settings/company", a.requireRoles(http.HandlerFunc(a.getCompanySettings), "company_owner"))
 	protected.Handle("PATCH /api/v1/settings/company", a.requireRoles(http.HandlerFunc(a.updateCompanySettings), "company_owner"))
 	protected.Handle("GET /api/v1/reviews/settings", a.requireModule("reviews", a.requireRoles(http.HandlerFunc(a.getReviewSettings), "company_owner")))

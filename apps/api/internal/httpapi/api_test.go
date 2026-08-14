@@ -105,6 +105,27 @@ func TestCampaignHoldoutIsDeterministicAndOptional(t *testing.T) {
 	}
 }
 
+func TestManagerApprovalThresholds(t *testing.T) {
+	tests := []struct {
+		role      string
+		operation string
+		amount    int
+		want      bool
+	}{
+		{"employee", "credit", 10000, false},
+		{"employee", "credit", 10001, true},
+		{"employee", "debit", 5000, false},
+		{"employee", "debit", 5001, true},
+		{"company_owner", "credit", 10001, false},
+		{"company_owner", "debit", 5001, false},
+	}
+	for _, test := range tests {
+		if got := requiresManagerApproval(test.role, test.operation, test.amount); got != test.want {
+			t.Fatalf("requiresManagerApproval(%q, %q, %d) = %v, want %v", test.role, test.operation, test.amount, got, test.want)
+		}
+	}
+}
+
 func TestPosterWebhookFieldExtraction(t *testing.T) {
 	payload := map[string]any{"event": "transaction.returned", "data": map[string]any{"transaction_id": json.Number("321")}}
 	if posterString(payload, "event", "type") != "transaction.returned" || posterString(payload, "transaction_id") != "321" {

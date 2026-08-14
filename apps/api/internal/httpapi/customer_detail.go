@@ -19,10 +19,11 @@ type customerUpdateInput struct {
 	Level     string `json:"level"`
 }
 type bonusInput struct {
-	Operation   string `json:"operation"`
-	Amount      int    `json:"amount"`
-	Description string `json:"description"`
-	BranchID    string `json:"branchId"`
+	Operation      string `json:"operation"`
+	Amount         int    `json:"amount"`
+	Description    string `json:"description"`
+	BranchID       string `json:"branchId"`
+	IdempotencyKey string `json:"idempotencyKey"`
 }
 
 func (a *api) updateCustomer(w http.ResponseWriter, r *http.Request) {
@@ -118,9 +119,8 @@ func (a *api) customerBonus(w http.ResponseWriter, r *http.Request) {
 	}
 	tenant := companyID(r)
 	claims, _ := r.Context().Value(identityKey).(tokenClaims)
-	if claims.Role == "employee" && ((in.Operation == "debit" && in.Amount > 5000) || (in.Operation == "credit" && in.Amount > 10000)) {
-		a.recordRisk(r, r.PathValue("id"), "", "bonus."+in.Operation, "blocked", "Сумма требует подтверждения владельца", map[string]any{"amount": in.Amount})
-		fail(w, 403, "MANAGER_APPROVAL_REQUIRED", "Для этой суммы нужно подтверждение владельца")
+	if requiresManagerApproval(claims.Role, in.Operation, in.Amount) {
+		a.requestBonusApproval(w, r, in)
 		return
 	}
 	var recent bool
@@ -179,6 +179,10 @@ func (a *api) customerBonus(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = a.db.Exec(r.Context(), `INSERT INTO audit_logs(company_id,actor_id,action,entity_type,entity_id,request_id,after_data) VALUES($1,$2,'loyalty.manual_bonus','customer',$3,$4,jsonb_build_object('operation',$5::text,'amount',$6::integer,'reason',$7::text,'balanceAfter',$8::integer))`, tenant, claims.Subject, r.PathValue("id"), r.Header.Get("X-Request-ID"), in.Operation, in.Amount, in.Description, next)
 	write(w, 201, envelope{Success: true, Data: map[string]int{"balance": next, "amount": in.Amount}})
+}
+
+func requiresManagerApproval(role, operation string, amount int) bool {
+	return role == "employee" && ((operation == "debit" && amount > 5000) || (operation == "credit" && amount > 10000))
 }
 func (a *api) listVisits(w http.ResponseWriter, r *http.Request) {
 	customerID := r.URL.Query().Get("customerId")

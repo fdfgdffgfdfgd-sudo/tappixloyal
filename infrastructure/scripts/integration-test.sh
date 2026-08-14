@@ -150,6 +150,29 @@ curl -fsS -H "Authorization: Bearer $token" "$API_URL/branches/$branch_id" | jq 
 cross_branch=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $docmed_token" "$API_URL/branches/$branch_id")
 test "$cross_branch" = "404"
 
+# Manager approval: a large staff adjustment is queued, tenant-isolated and executed once by the owner.
+docker compose exec -T postgres psql -U tappix -d tappix -c "INSERT INTO users(id,company_id,branch_id,first_name,last_name,email,password_hash,role,status) VALUES('30000000-0000-0000-0000-000000000098',(SELECT id FROM companies WHERE slug='dentline'),'$branch_id','Approval','Staff','approval.staff@tappix.test',crypt('Approval2026!',gen_salt('bf')),'employee','active') ON CONFLICT(id) DO UPDATE SET company_id=excluded.company_id,branch_id=excluded.branch_id,email=excluded.email,password_hash=excluded.password_hash,role=excluded.role,status='active'" >/dev/null
+docker compose exec -T postgres psql -U tappix -d tappix -c "INSERT INTO company_memberships(company_id,user_id,role,status) VALUES((SELECT id FROM companies WHERE slug='dentline'),'30000000-0000-0000-0000-000000000098','staff','active') ON CONFLICT(company_id,user_id) DO UPDATE SET role='staff',status='active',updated_at=now()" >/dev/null
+staff_login=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"approval.staff@tappix.test","password":"Approval2026!"}')
+staff_token=$(printf '%s' "$staff_login" | jq -r '.data.accessToken')
+approval_balance_before=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$dentline_customer" | jq -r '.data.totalPoints')
+approval_key="integration-manager-approval-$(date +%s)"
+approval_response=$(curl -fsS -X POST -H "Authorization: Bearer $staff_token" -H 'Content-Type: application/json' -d "{\"operation\":\"credit\",\"amount\":10001,\"description\":\"Корректировка крупного чека\",\"branchId\":\"$branch_id\",\"idempotencyKey\":\"$approval_key\"}" "$API_URL/customers/$dentline_customer/bonus")
+approval_id=$(printf '%s' "$approval_response" | jq -r '.data.id')
+printf '%s' "$approval_response" | jq -e '.data.status == "pending" and .data.approvalRequired == true' >/dev/null
+test -n "$approval_id"
+staff_approval_list=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $staff_token" "$API_URL/operation-approvals")
+test "$staff_approval_list" = "403"
+cross_approval=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $docmed_token" -H 'Content-Type: application/json' -d '{"decision":"approved","reason":"Cross tenant attempt"}' "$API_URL/operation-approvals/$approval_id/decision")
+test "$cross_approval" = "404"
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"decision":"approved","reason":"Чек подтверждён владельцем"}' "$API_URL/operation-approvals/$approval_id/decision" | jq -e '.data.status == "approved" and .data.executed == true' >/dev/null
+approval_balance_after=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$dentline_customer" | jq -r '.data.totalPoints')
+test "$approval_balance_after" -eq $((approval_balance_before+10001))
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/operation-approvals?status=approved" | jq -e --arg id "$approval_id" '.data | any(.id == $id and .status == "approved")' >/dev/null
+approval_replay=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"decision":"approved","reason":"Повторное подтверждение"}' "$API_URL/operation-approvals/$approval_id/decision")
+test "$approval_replay" = "409"
+docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM audit_logs WHERE company_id=(SELECT id FROM companies WHERE slug='dentline') AND entity_id='$approval_id' AND action='loyalty.approval.approved'" | grep -qx '1'
+
 # Product DoD: publish program -> register guest -> wallet progress -> staff visit -> reward -> redeem -> history.
 original_portal=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/settings/guest-portal" | jq -c '.data + {loyaltyMode:(.data.loyaltyMode // "points"),stampsTarget:(.data.stampsTarget // 6),stampReward:(.data.stampReward // "Подарок") }')
 curl -fsS -X PATCH -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"loyaltyMode":"stamps","stampsTarget":2,"stampReward":"Integration подарок","discountStart":3,"discountStep":2,"discountMax":15,"visitsPerStep":3}' "$API_URL/settings/guest-portal" | jq -e '.data.loyaltyMode == "stamps" and .data.stampsTarget == 2' >/dev/null

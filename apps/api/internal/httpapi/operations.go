@@ -67,10 +67,24 @@ func (a *api) createEmployee(w http.ResponseWriter, r *http.Request) {
 	if in.BranchID != "" {
 		branch = in.BranchID
 	}
+	tx, err := a.db.Begin(r.Context())
+	if err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось создать сотрудника")
+		return
+	}
+	defer tx.Rollback(r.Context())
 	var id string
-	err = a.db.QueryRow(r.Context(), `INSERT INTO users(company_id,branch_id,first_name,last_name,email,password_hash,role,status) VALUES($1,$2,$3,$4,$5,$6,'employee','active') RETURNING id`, companyID(r), branch, strings.TrimSpace(in.FirstName), strings.TrimSpace(in.LastName), strings.TrimSpace(in.Email), string(hash)).Scan(&id)
+	err = tx.QueryRow(r.Context(), `INSERT INTO users(company_id,branch_id,first_name,last_name,email,password_hash,role,status) VALUES($1,$2,$3,$4,$5,$6,'employee','active') RETURNING id`, companyID(r), branch, strings.TrimSpace(in.FirstName), strings.TrimSpace(in.LastName), strings.TrimSpace(in.Email), string(hash)).Scan(&id)
 	if err != nil {
 		fail(w, 409, "EMPLOYEE_EXISTS", "Сотрудник с таким email уже существует")
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `INSERT INTO company_memberships(company_id,user_id,role,status) VALUES($1,$2,'staff','active')`, companyID(r), id); err != nil {
+		fail(w, 500, "MEMBERSHIP_ERROR", "Не удалось выдать сотруднику доступ")
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось сохранить сотрудника")
 		return
 	}
 	write(w, 201, envelope{Success: true, Data: map[string]string{"id": id}})
@@ -119,6 +133,11 @@ func (a *api) updateEmployee(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "EMPLOYEE_NOT_FOUND", "Сотрудник не найден")
 		return
 	}
+	membershipStatus := "active"
+	if in.Status != "active" {
+		membershipStatus = "suspended"
+	}
+	_, _ = a.db.Exec(r.Context(), `UPDATE company_memberships SET status=$3,updated_at=now() WHERE company_id=$1 AND user_id=$2`, companyID(r), r.PathValue("id"), membershipStatus)
 	write(w, 200, envelope{Success: true, Data: map[string]bool{"updated": true}})
 }
 func (a *api) deleteEmployee(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +151,7 @@ func (a *api) deleteEmployee(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "EMPLOYEE_NOT_FOUND", "Сотрудник не найден")
 		return
 	}
+	_, _ = a.db.Exec(r.Context(), `UPDATE company_memberships SET status='suspended',updated_at=now() WHERE company_id=$1 AND user_id=$2`, companyID(r), r.PathValue("id"))
 	write(w, 200, envelope{Success: true, Data: map[string]bool{"archived": true}})
 }
 
