@@ -35,7 +35,7 @@ body .shell>main{margin-left:256px}
 .integration-progress{padding:7px 10px;border:1px solid #d8dee8;border-radius:999px;background:#fff;color:#475569;font-size:11px;font-weight:750;white-space:nowrap}
 .integration-catalog article.planned{opacity:1!important;background:#f8fafc!important}
 .integration-catalog article.planned .integration-logo{filter:grayscale(.75);opacity:.7}
-.integration-catalog article.planned b{padding:5px 8px;border-radius:7px;background:#eef2f6;color:#64748b;font-size:10px}
+.integration-catalog article.planned b{padding:5px 8px;border-radius:7px;background:#eef2f6;color:#566175;font-size:10px}
 
 .risk-explainer{margin-bottom:16px;padding:18px 20px;border:1px solid #ddd8ff;border-radius:14px;background:#f7f5ff;display:flex;align-items:flex-start;gap:14px}
 .risk-explainer>span{width:42px;height:42px;border-radius:11px;background:#e9e5ff;color:#5b4bce;display:grid;place-items:center;flex:none}

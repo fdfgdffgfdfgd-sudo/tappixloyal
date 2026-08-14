@@ -2,15 +2,15 @@
 .customer-event-timeline > header { min-height: 70px; display: flex; align-items: center; border-bottom: 1px solid var(--app-border, #e2e8f0); }
 .customer-event-timeline > header div { flex: 1; }
 .customer-event-timeline > header h2 { margin: 0; font-size: 17px; }
-.customer-event-timeline > header p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
+.customer-event-timeline > header p { margin: 4px 0 0; color: #566175; font-size: 13px; }
 .customer-event-timeline > header svg { width: 20px; color: #6558d9; }
 .customer-event-timeline > article { position: relative; min-height: 70px; display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 11px; border-bottom: 1px solid #edf0f4; }
 .customer-event-timeline > article:last-of-type { border-bottom: 0; }
 .customer-event-timeline > article > span { width: 32px; height: 32px; border-radius: 50%; background: #f0edff; color: #5b4bce; display: grid; place-items: center; }
 .customer-event-timeline > article > span svg { width: 15px; }
 .customer-event-timeline > article > div { display: grid; gap: 3px; min-width: 0; }
-.customer-event-timeline > article small { color: #64748b; }
-.customer-event-timeline > article p { margin: 0; color: #64748b; font-size: 12px; }
+.customer-event-timeline > article small { color: #566175; }
+.customer-event-timeline > article p { margin: 0; color: #566175; font-size: 12px; }
 .customer-event-timeline > article b { font-variant-numeric: tabular-nums; color: #16784a; }
 .customer-event-timeline > article b.spent { color: #a33b4c; }
 @media(max-width:620px){.customer-event-timeline{padding:0 16px 8px}.customer-event-timeline>article{grid-template-columns:34px 1fr}.customer-event-timeline>article>b{grid-column:2}}
