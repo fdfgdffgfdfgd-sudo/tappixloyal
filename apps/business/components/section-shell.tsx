@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BarChart3,
   Building2,
@@ -50,6 +50,11 @@ type Workspace = {
   plan: string;
   current: boolean;
 };
+type Identity = {
+  role: string;
+  firstName: string;
+  lastName: string;
+};
 type SwitchResult = {
   accessToken: string;
   refreshToken: string;
@@ -73,29 +78,25 @@ export function SectionShell({
   const [navOpen, setNavOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
-  const [actualRole, setActualRole] = useState("");
+  const [identity, setIdentity] = useState<Identity | null>(null);
+  const [unreachable, setUnreachable] = useState(false);
   const commandTrigger = useRef<HTMLButtonElement>(null);
   const commandDialog = useDialogFocusTrap<HTMLDivElement>(commandOpen, closeCommand);
-  const user = useMemo(() => {
-    if (typeof window === "undefined")
-      return { firstName: "", lastName: "", role: "" };
-    try {
-      return JSON.parse(sessionStorage.getItem("tappix_user") || "{}");
-    } catch {
-      return {};
-    }
-  }, []);
   useEffect(() => {
     Promise.all([
       api<Workspace[]>("/workspaces"),
-      api<{ role: string }>("/auth/me"),
+      api<Identity>("/auth/me"),
     ])
-      .then(([spaces, identity]) => {
+      .then(([spaces, who]) => {
         setWorkspaces(spaces);
-        setActualRole(identity.role);
+        setIdentity(who);
+        setUnreachable(false);
       })
-      .catch(() => undefined);
+      // Swallowing this used to leave the header showing a placeholder name and
+      // the sidebar claiming the system was fine. Say so instead.
+      .catch(() => setUnreachable(true));
   }, []);
+  const fullName = identity ? [identity.firstName, identity.lastName].filter(Boolean).join(" ") : "";
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -115,7 +116,10 @@ export function SectionShell({
   const current =
     workspaces.find((workspace) => workspace.current) || workspaces[0];
   const selected = settingsRoutes.has(active) && active !== "/employees" ? "/settings" : active;
-  const visibleItems = actualRole === "employee" ? [items[0]] : items;
+  // Until the role is confirmed, show only the group both roles share. Rendering
+  // the full owner navigation first briefly offered an employee links they
+  // cannot use.
+  const visibleItems = !identity ? [items[0]] : identity.role === "employee" ? [items[0]] : items;
   const commandItems = visibleItems
     .flatMap(([, links]) => links)
     .filter(([, , label]) => label.toLocaleLowerCase("ru-RU").includes(commandQuery.trim().toLocaleLowerCase("ru-RU")));
@@ -134,8 +138,8 @@ export function SectionShell({
     });
     sessionStorage.setItem("tappix_access", result.accessToken);
     sessionStorage.setItem("tappix_refresh", result.refreshToken);
-    const saved = { ...user, companyId: result.companyId, role: result.role };
-    sessionStorage.setItem("tappix_user", JSON.stringify(saved));
+    // The profile is read back from /auth/me after the reload, so there is no
+    // cached copy to keep in sync here.
     window.location.assign("/");
   }
   return (
@@ -201,27 +205,20 @@ export function SectionShell({
             <Link aria-current={selected === href ? "page" : undefined} className={selected === href ? "current" : ""} href={href} key={href} onClick={() => setNavOpen(false)}><Icon />{label}</Link>
           ))}</div></div>)}
         </nav>
-        <div className="sidebar-meta">
-          <span className="online-dot" />
-          Система работает
+        <div className={`sidebar-meta ${unreachable ? "is-offline" : ""}`} role="status">
+          <span className={unreachable ? "offline-dot" : identity ? "online-dot" : "pending-dot"} />
+          {unreachable ? "Нет связи с сервером" : identity ? "Система работает" : "Проверяем соединение…"}
         </div>
       </aside>
       <main className="product-main">
         <PageHeader eyebrow={current?.name || "Рабочее пространство"} title={title} subtitle={subtitle} leading={<button className="product-menu-toggle" aria-label="Открыть меню" onClick={() => setNavOpen(true)}><Menu/></button>} actions={<div className="product-user">
             <button ref={commandTrigger} className="product-command" onClick={() => setCommandOpen(true)}><Search/><span>Найти</span><kbd>⌘ K</kbd></button>
             <Link className="header-scanner" href="/scanner"><Camera/>Сканер</Link>
-            <span>{(user.firstName || "А").slice(0, 1)}</span>
+            {identity && <><span>{fullName.slice(0, 1)}</span>
             <div>
-              <strong>
-                {[user.firstName, user.lastName].filter(Boolean).join(" ") ||
-                  "Армат"}
-              </strong>
-              <small>
-                {(actualRole || user.role) === "company_owner"
-                  ? "Владелец"
-                  : "Сотрудник"}
-              </small>
-            </div>
+              <strong>{fullName}</strong>
+              <small>{identity.role === "company_owner" ? "Владелец" : "Сотрудник"}</small>
+            </div></>}
           </div>}/>
         <section id="main-content">{children}</section>
       </main>

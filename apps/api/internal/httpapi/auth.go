@@ -235,7 +235,23 @@ func (a *api) verifyJWT(token string) (tokenClaims, error) {
 }
 func (a *api) me(w http.ResponseWriter, r *http.Request) {
 	claims, _ := r.Context().Value(identityKey).(tokenClaims)
-	write(w, 200, envelope{Success: true, Data: claims})
+	// The token carries no name, so the panel had no way to render the signed-in
+	// person after a reload. Read it from the user record instead.
+	var firstName, lastName string
+	err := a.db.QueryRow(r.Context(), `SELECT first_name,last_name FROM users WHERE id=$1 AND deleted_at IS NULL`, claims.Subject).Scan(&firstName, &lastName)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить профиль")
+		return
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]any{
+		"sub":       claims.Subject,
+		"companyId": claims.CompanyID,
+		"role":      claims.Role,
+		"aud":       claims.Audience,
+		"exp":       claims.ExpiresAt,
+		"firstName": firstName,
+		"lastName":  lastName,
+	}})
 }
 func companyID(r *http.Request) string {
 	claims, _ := r.Context().Value(identityKey).(tokenClaims)

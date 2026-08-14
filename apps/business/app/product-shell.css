@@ -23,6 +23,8 @@
 .product-sidebar nav svg { width:18px; }
 .sidebar-meta { margin-top:auto; padding:12px; color:#8d97a5; font-size:12px; display:flex; align-items:center; gap:8px; }
 .online-dot { width:7px; height:7px; border-radius:50%; background:#36b37e; box-shadow:0 0 0 3px rgba(54,179,126,.14); }
+.pending-dot { width:7px; height:7px; border-radius:50%; background:#9aa2ad; box-shadow:0 0 0 3px rgba(154,162,173,.16); }
+.offline-dot { width:7px; height:7px; border-radius:50%; background:#d4574f; box-shadow:0 0 0 3px rgba(212,87,79,.18); }
 .product-main { min-width:0; }
 .product-main>header { min-height:104px; padding:24px 36px; border-bottom:1px solid var(--product-border); background:rgba(255,255,255,.88); display:flex; align-items:center; justify-content:space-between; gap:20px; }
 .product-eyebrow { color:var(--product-accent); font-size:11px; font-weight:750; text-transform:uppercase; letter-spacing:.08em; }
