@@ -24,6 +24,15 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await page.locator('input[name="password"]').fill("Tappix2026!");
   await page.getByRole("button", { name: "Войти" }).click();
   await expect(page).toHaveURL(/\/$/);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  if (!mobile) {
+    const shellAlignment = await page.evaluate(() => {
+      const sidebar = document.querySelector(".product-sidebar")?.getBoundingClientRect();
+      const main = document.querySelector(".product-main")?.getBoundingClientRect();
+      return sidebar && main ? Math.abs(sidebar.right - main.left) : 999;
+    });
+    expect(shellAlignment).toBeLessThanOrEqual(1);
+  }
   await expect(page.getByRole("heading", { name: "Обзор" })).toBeVisible();
 
   if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
@@ -39,10 +48,10 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await expectNoSeriousAccessibilityViolations(page);
 
   if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
-  await page.getByRole("link", { name: "Контроль рисков", exact: true }).click();
+  await page.getByRole("link", { name: "Проверка операций", exact: true }).click();
   await expect(page).toHaveURL(/\/risk-center/);
-  await expect(page.getByRole("heading", { name: "Контроль рисков" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Очередь расследований" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Проверка операций" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Операции, которые нужно проверить" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
   if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();

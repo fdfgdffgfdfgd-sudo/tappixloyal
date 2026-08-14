@@ -1,4 +1,22 @@
 /* Focused product polish: clearer hierarchy, denser layouts and honest states. */
+/* The legacy dashboard stylesheet offsets every <main> by 256px. Modern shells
+   already reserve sidebar space with CSS Grid, so that rule created a second,
+   empty sidebar on every new screen. Reset it once at the final cascade layer. */
+body main{margin-left:0}
+body .shell>main{margin-left:256px}
+
+.product-shell,.platform-shell{width:100%;max-width:none}
+.product-main>section,.platform-shell main>section{width:100%;max-width:none;margin:0;padding:clamp(18px,2vw,32px) clamp(16px,2.4vw,40px) clamp(36px,4vw,64px)}
+.product-main>header,.platform-shell main>header{padding-inline:clamp(16px,2.4vw,40px)}
+.platform-shell{grid-template-columns:clamp(220px,15vw,248px) minmax(0,1fr)}
+.platform-metrics{grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:clamp(10px,1vw,16px)}
+.platform-insight-grid{grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:clamp(10px,1vw,16px)}
+.platform-grid{grid-template-columns:minmax(0,1.45fr) minmax(300px,1fr);gap:clamp(12px,1.2vw,20px)}
+.platform-card,.platform-metrics article,.platform-insight-grid article{min-width:0}
+.platform-card{padding:clamp(16px,1.5vw,24px)}
+.platform-hero h2{font-size:clamp(22px,2vw,30px)}
+.platform-shell h1{font-size:clamp(22px,1.8vw,28px)}
+
 .referral-editor-grid{grid-template-columns:minmax(0,1.55fr) minmax(320px,.65fr);gap:20px}
 .referral-basic-fields{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px;align-items:start}
 .referral-basic-fields>label:last-child{grid-column:1/-1}
@@ -29,11 +47,26 @@
 .risk-list article>div{min-width:0}
 
 @media(max-width:900px){
+ .platform-shell{display:block}
+ .platform-shell>aside{position:relative;width:100%;height:auto;padding:12px}
+ .platform-brand{padding-bottom:10px}
+ .platform-shell aside nav{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+ .platform-shell aside nav::-webkit-scrollbar{display:none}
+ .platform-shell aside nav button{min-width:max-content;white-space:nowrap}
+ .platform-exit{display:none}
+ .platform-grid{grid-template-columns:1fr}
  .referral-editor-grid,.referral-basic-fields{grid-template-columns:1fr}
  .referral-basic-fields>label:last-child{grid-column:auto}
  .integration-catalog>header{align-items:flex-start}
 }
 @media(max-width:620px){
+ body .shell>main{margin-left:0}
+ .product-main>section,.platform-shell main>section{padding:16px 14px 40px}
+ .platform-shell main>header{min-height:82px;padding:16px 14px}
+ .platform-founder{display:none}
+ .platform-metrics,.platform-insight-grid{grid-template-columns:1fr}
+ .platform-hero{align-items:stretch;flex-direction:column;gap:14px}
+ .platform-hero>button{justify-content:center}
  .referral-editor>header,.referral-basic-fields{padding-inline:17px}
  .risk-explainer{padding:15px}
  .risk-list article{grid-template-columns:auto minmax(0,1fr)}
