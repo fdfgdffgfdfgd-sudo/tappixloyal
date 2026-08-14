@@ -44,6 +44,7 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await expect(page.getByRole("heading", { name: "Что лояльность дала бизнесу?" })).toBeVisible();
   await expect(page.getByText("Возвращаются ли клиенты?")).toBeVisible();
   await expect(page.getByText("Работают ли рекомендации?")).toBeVisible();
+  await expect(page.getByText(/к прошлому периоду|Новый результат за период|Без изменений/).first()).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
   if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();

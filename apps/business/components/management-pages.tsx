@@ -1902,10 +1902,15 @@ type ProAnalytics = {
   rfm: { segments: { code: string; name: string; churnRisk: string; customers: number; revenue: number; averageLTV: number }[] };
 };
 type BonusLiability = { currency: string; issued: number; active: number; redeemed: number; expired: number; liability: number; expectedRedemptionCost: number };
-type BusinessOutcomes = {days:number;retention:{returnedCustomers:number;repeatVisits:number};automations:{messages:number;reachedCustomers:number;returnedCustomers:number;attributedRevenue:number};referrals:{newCustomers:number;repeatCustomers:number;revenue:number};rewards:{bestName:string;redemptions:number};revenue:{members:number;campaignAttributed:number}};
+type BusinessOutcomes = {days:number;retention:{returnedCustomers:number;repeatVisits:number};automations:{messages:number;reachedCustomers:number;returnedCustomers:number;attributedRevenue:number};referrals:{newCustomers:number;repeatCustomers:number;revenue:number};rewards:{bestName:string;redemptions:number};revenue:{members:number;campaignAttributed:number};previous:{returnedCustomers:number;automationReturned:number;automationRevenue:number;referralCustomers:number;referralRevenue:number;rewardRedemptions:number;memberRevenue:number};branches:{id:string;name:string;customers:number;returnedCustomers:number;visits:number;revenue:number;rewards:number}[]};
 function MetricDelta({ current, previous }: { current: number; previous: number }) {
   const value = previous === 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
   return <small className={value >= 0 ? "metric-delta up" : "metric-delta down"}>{value >= 0 ? "+" : ""}{value.toFixed(0)}% к прошлому периоду</small>;
+}
+function OutcomeDelta({current,previous}:{current:number;previous:number}){
+  if(previous===0)return current>0?<small className="outcome-delta new">Новый результат за период</small>:<small className="outcome-delta neutral">Без изменений</small>;
+  const value=(current-previous)/previous*100;
+  return <small className={`outcome-delta ${value>=0?"up":"down"}`}>{value>=0?"↑":"↓"} {Math.abs(value).toFixed(0)}% к прошлому периоду</small>;
 }
 export function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -1945,11 +1950,11 @@ export function AnalyticsPage() {
       {data && (
         <>
           {outcomes&&<section className="business-outcomes"><header><div><small>РЕЗУЛЬТАТ ПРОГРАММЫ</small><h2>Что лояльность дала бизнесу?</h2><p>Только подтверждённые события за {outcomes.days} дней. Выручка без контрольной группы называется атрибутированной.</p></div><TrendingUp/></header><div>
-            <article><span><Repeat2/></span><div><small>Возвращаются ли клиенты?</small><strong>{outcomes.retention.returnedCustomers} клиентов вернулись</strong><p>{outcomes.retention.repeatVisits} повторных посещений за период</p></div></article>
-            <article><span><Send/></span><div><small>Что дали автоматизации?</small><strong>{outcomes.automations.returnedCustomers} клиентов вернулись</strong><p>{outcomes.automations.attributedRevenue>0?`${money(outcomes.automations.attributedRevenue)} атрибутированной выручки`:`${outcomes.automations.reachedCustomers} клиентов получили сообщение`}</p></div></article>
-            <article><span><Users/></span><div><small>Работают ли рекомендации?</small><strong>{outcomes.referrals.newCustomers} новых клиентов</strong><p>{outcomes.referrals.repeatCustomers} уже совершили повторную покупку</p></div></article>
-            <article><span><Gift/></span><div><small>Какая награда работает лучше?</small><strong>{outcomes.rewards.bestName||"Пока недостаточно данных"}</strong><p>{outcomes.rewards.redemptions?`${outcomes.rewards.redemptions} использований`:`Появится после первого погашения`}</p></div></article>
-          </div></section>}
+            <article><span><Repeat2/></span><div><small>Возвращаются ли клиенты?</small><strong>{outcomes.retention.returnedCustomers} клиентов вернулись</strong><p>{outcomes.retention.repeatVisits} повторных посещений за период</p><OutcomeDelta current={outcomes.retention.returnedCustomers} previous={outcomes.previous.returnedCustomers}/></div></article>
+            <article><span><Send/></span><div><small>Что дали автоматизации?</small><strong>{outcomes.automations.returnedCustomers} клиентов вернулись</strong><p>{outcomes.automations.attributedRevenue>0?`${money(outcomes.automations.attributedRevenue)} атрибутированной выручки`:`${outcomes.automations.reachedCustomers} клиентов получили сообщение`}</p><OutcomeDelta current={outcomes.automations.returnedCustomers} previous={outcomes.previous.automationReturned}/></div></article>
+            <article><span><Users/></span><div><small>Работают ли рекомендации?</small><strong>{outcomes.referrals.newCustomers} новых клиентов</strong><p>{outcomes.referrals.repeatCustomers} уже совершили повторную покупку</p><OutcomeDelta current={outcomes.referrals.newCustomers} previous={outcomes.previous.referralCustomers}/></div></article>
+            <article><span><Gift/></span><div><small>Какая награда работает лучше?</small><strong>{outcomes.rewards.bestName||"Пока недостаточно данных"}</strong><p>{outcomes.rewards.redemptions?`${outcomes.rewards.redemptions} использований`:`Появится после первого погашения`}</p><OutcomeDelta current={outcomes.rewards.redemptions} previous={outcomes.previous.rewardRedemptions}/></div></article>
+          </div>{outcomes.branches.length>1&&<section className="outcome-branches"><header><div><small>ФИЛИАЛЫ</small><h3>Где программа лучше возвращает клиентов?</h3></div><Link href="/branches">Управлять филиалами</Link></header><div>{outcomes.branches.slice(0,4).map((branch,index)=><article key={branch.id}><b>{index+1}</b><span><strong>{branch.name}</strong><small>{branch.returnedCustomers} вернулись · {branch.visits} посещений</small></span><div><strong>{money(branch.revenue)}</strong><small>{branch.rewards} наград выдано</small></div></article>)}</div></section>}</section>}
           <div className="insight-metrics">
             <article>
               <Users />

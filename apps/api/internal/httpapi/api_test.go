@@ -60,6 +60,14 @@ func TestPercentage(t *testing.T) {
 	}
 }
 
+func TestNormalizedOutcomeDays(t *testing.T) {
+	for raw, want := range map[string]int{"": 30, "6": 30, "366": 30, "invalid": 30, "7": 7, "90": 90, "365": 365} {
+		if got := normalizedOutcomeDays(raw); got != want {
+			t.Fatalf("normalizedOutcomeDays(%q) = %d, want %d", raw, got, want)
+		}
+	}
+}
+
 func TestIntegrationSecretEncryption(t *testing.T) {
 	key := integrationEncryptionKey("unit-test")
 	ciphertext, err := encryptIntegrationSecret(key, []byte("webhook-secret"))
