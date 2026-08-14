@@ -111,11 +111,24 @@ func (a *api) customerBonus(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "VALIDATION_ERROR", "Укажите операцию и положительную сумму")
 		return
 	}
-	if strings.TrimSpace(in.Description) == "" {
-		in.Description = "Ручная корректировка"
+	if len([]rune(strings.TrimSpace(in.Description))) < 4 {
+		fail(w, 422, "REASON_REQUIRED", "Укажите причину ручной операции — минимум 4 символа")
+		return
 	}
 	tenant := companyID(r)
 	claims, _ := r.Context().Value(identityKey).(tokenClaims)
+	if claims.Role == "employee" && ((in.Operation == "debit" && in.Amount > 5000) || (in.Operation == "credit" && in.Amount > 10000)) {
+		a.recordRisk(r, r.PathValue("id"), "", "bonus."+in.Operation, "blocked", "Сумма требует подтверждения владельца", map[string]any{"amount": in.Amount})
+		fail(w, 403, "MANAGER_APPROVAL_REQUIRED", "Для этой суммы нужно подтверждение владельца")
+		return
+	}
+	var recent bool
+	_ = a.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM bonus_ledger WHERE company_id=$1 AND customer_id=$2 AND created_by=$3 AND operation=$4 AND amount=$5 AND created_at>now()-interval '30 seconds')`, tenant, r.PathValue("id"), claims.Subject, in.Operation, in.Amount).Scan(&recent)
+	if recent {
+		a.recordRisk(r, r.PathValue("id"), "", "bonus."+in.Operation, "blocked", "Повтор ручной бонусной операции", map[string]any{"amount": in.Amount, "windowSeconds": 30})
+		fail(w, 409, "DUPLICATE_BONUS_OPERATION", "Такая операция уже выполнена. Проверьте баланс перед повтором")
+		return
+	}
 	tx, err := a.db.Begin(r.Context())
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось начать операцию")
@@ -158,6 +171,7 @@ func (a *api) customerBonus(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "BONUS_FAILED", "Не удалось выполнить бонусную операцию")
 		return
 	}
+	_, _ = a.db.Exec(r.Context(), `INSERT INTO audit_logs(company_id,actor_id,action,entity_type,entity_id,request_id,after_data) VALUES($1,$2,'loyalty.manual_bonus','customer',$3,$4,jsonb_build_object('operation',$5::text,'amount',$6::integer,'reason',$7::text,'balanceAfter',$8::integer))`, tenant, claims.Subject, r.PathValue("id"), r.Header.Get("X-Request-ID"), in.Operation, in.Amount, in.Description, next)
 	write(w, 201, envelope{Success: true, Data: map[string]int{"balance": next, "amount": in.Amount}})
 }
 func (a *api) listVisits(w http.ResponseWriter, r *http.Request) {

@@ -25,6 +25,7 @@ import {
   Repeat2,
   Send,
   ShieldCheck,
+  ShieldAlert,
   Star,
   ToggleLeft,
   ToggleRight,
@@ -51,6 +52,8 @@ type Customer = {
   totalPoints: number;
   level: string;
   createdAt: string;
+  favoriteBranch?: string;
+  lastBranch?: string;
 };
 type Branch = {
   id: string;
@@ -408,6 +411,7 @@ type CustomerTimelineEvent = {
   branch?: string;
   properties: Record<string, string | number | boolean>;
 };
+type CustomerRisk = {id:string;operation:string;severity:"warning"|"blocked";status:string;reason:string;createdAt:string;branch?:string;actor?:string};
 export function CustomerDetailPage({ id }: { id: string }) {
   const router = useRouter();
   const [now] = useState(() => Date.now());
@@ -419,22 +423,25 @@ export function CustomerDetailPage({ id }: { id: string }) {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [rewards, setRewards] = useState<CustomerReward[]>([]);
   const [timeline, setTimeline] = useState<CustomerTimelineEvent[]>([]);
+  const [risks, setRisks] = useState<CustomerRisk[]>([]);
   const [msg, setMsg] = useState("");
   const [bonus, setBonus] = useState<"credit" | "debit" | null>(null);
   const load = async () => {
     try {
-      const [c, h, b, g, events] = await Promise.all([
+      const [c, h, b, g, events, riskItems] = await Promise.all([
         api<Customer>(`/customers/${id}`),
         api<CustomerHistory>(`/customers/${id}/history`),
         api<Branch[]>("/branches"),
         api<CustomerReward[]>(`/customers/${id}/rewards`),
         api<CustomerTimelineEvent[]>(`/customers/${id}/timeline`),
+        api<CustomerRisk[]>(`/customers/${id}/risk`),
       ]);
       setValue(c);
       setHistory(h);
       setBranches(b);
       setRewards(g);
       setTimeline(events);
+      setRisks(riskItems);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Ошибка");
     }
@@ -601,7 +608,13 @@ export function CustomerDetailPage({ id }: { id: string }) {
               : "Формируется после 2 визитов"}
           </small>
         </article>
+        <article>
+          <span>Любимый филиал</span>
+          <strong>{value.favoriteBranch||"Пока не определён"}</strong>
+          <small>{value.lastBranch?`Последний визит: ${value.lastBranch}`:"Появится после первого визита"}</small>
+        </article>
       </div>
+      {risks.some(item=>item.status==="open")&&<section className="customer-risk-callout" role="status"><ShieldAlert/><div><strong>Нужна проверка операций</strong><p>{risks.filter(item=>item.status==="open").length} подозрительных действий остановлено автоматически. Бонусы и посещения клиента не изменились.</p></div></section>}
       <div className="customer-actions">
         <button className="primary-action" onClick={() => setBonus("credit")}>
           Начислить бонусы
@@ -731,6 +744,11 @@ export function CustomerDetailPage({ id }: { id: string }) {
             return <article key={event.id}><span><Clock3/></span><div><strong>{labels[event.type]||event.type}</strong><small>{new Date(event.occurredAt).toLocaleString("ru-RU")}{event.branch?` · ${event.branch}`:""}</small>{event.properties.reason&&<p>{String(event.properties.reason)}</p>}</div>{amount>0&&<b>{event.type==="bonus.spent"?"−":"+"}{amount}</b>}</article>;
           })}
           {!timeline.length&&<div className="zero"><Clock3/><strong>История начнётся с первого действия</strong><p>Регистрация, посещения, покупки, бонусы и награды появятся здесь по времени.</p></div>}
+        </section>
+        <section className="data-card customer-risk-list">
+          <header><div><h2>Контроль операций</h2><p>Автоматически остановленные повторы и превышения лимитов</p></div><ShieldAlert/></header>
+          {risks.map(item=><article key={item.id}><span><ShieldAlert/></span><div><strong>{item.reason}</strong><small>{new Date(item.createdAt).toLocaleString("ru-RU")}{item.branch?` · ${item.branch}`:""}{item.actor?` · ${item.actor}`:""}</small></div><b>{item.severity==="blocked"?"Остановлено":"Проверить"}</b></article>)}
+          {!risks.length&&<div className="zero"><ShieldCheck/><strong>Подозрительных операций нет</strong><p>Повторы, частые посещения и крупные ручные списания контролируются автоматически.</p></div>}
         </section>
         <section className="data-card">
           <h2>Бонусная история</h2>

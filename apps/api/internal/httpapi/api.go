@@ -40,16 +40,18 @@ type apiError struct {
 	Message string `json:"message"`
 }
 type customer struct {
-	ID          string     `json:"id"`
-	FirstName   string     `json:"firstName"`
-	LastName    string     `json:"lastName"`
-	Phone       string     `json:"phone"`
-	Email       string     `json:"email"`
-	Birthday    *time.Time `json:"birthday,omitempty"`
-	TotalPoints int        `json:"totalPoints"`
-	TotalVisits int        `json:"totalVisits"`
-	Level       string     `json:"level"`
-	CreatedAt   time.Time  `json:"createdAt"`
+	ID             string     `json:"id"`
+	FirstName      string     `json:"firstName"`
+	LastName       string     `json:"lastName"`
+	Phone          string     `json:"phone"`
+	Email          string     `json:"email"`
+	Birthday       *time.Time `json:"birthday,omitempty"`
+	TotalPoints    int        `json:"totalPoints"`
+	TotalVisits    int        `json:"totalVisits"`
+	Level          string     `json:"level"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	FavoriteBranch string     `json:"favoriteBranch,omitempty"`
+	LastBranch     string     `json:"lastBranch,omitempty"`
 }
 type customerInput struct {
 	FirstName string `json:"firstName"`
@@ -113,6 +115,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("DELETE /api/v1/customers/{id}", a.requireRoles(http.HandlerFunc(a.deleteCustomer), "company_owner"))
 	protected.Handle("GET /api/v1/customers/{id}/history", a.requirePermission("customers.read", http.HandlerFunc(a.customerAdminHistory)))
 	protected.Handle("GET /api/v1/customers/{id}/timeline", a.requirePermission("customers.read", http.HandlerFunc(a.customerTimeline)))
+	protected.Handle("GET /api/v1/customers/{id}/risk", a.requirePermission("customers.read", http.HandlerFunc(a.customerRisk)))
 	protected.Handle("GET /api/v1/customers/{id}/rewards", a.requireModule("loyalty", a.requirePermission("customers.read", http.HandlerFunc(a.customerRewards))))
 	protected.Handle("PATCH /api/v1/rewards/{id}", a.requireModule("loyalty", a.requirePermission("rewards.write", http.HandlerFunc(a.updateReward))))
 	protected.Handle("GET /api/v1/reward-definitions", a.requireModule("loyalty", a.requirePermission("rewards.read", http.HandlerFunc(a.listRewardDefinitions))))
@@ -403,7 +406,10 @@ func (a *api) createCustomer(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) getCustomer(w http.ResponseWriter, r *http.Request) {
 	var c customer
-	err := a.db.QueryRow(r.Context(), `SELECT id,first_name,last_name,phone,coalesce(email,''),birthday,total_points,total_visits,level,created_at FROM customers WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL`, companyID(r), r.PathValue("id")).Scan(&c.ID, &c.FirstName, &c.LastName, &c.Phone, &c.Email, &c.Birthday, &c.TotalPoints, &c.TotalVisits, &c.Level, &c.CreatedAt)
+	err := a.db.QueryRow(r.Context(), `SELECT c.id,c.first_name,c.last_name,c.phone,coalesce(c.email,''),c.birthday,c.total_points,c.total_visits,c.level,c.created_at,
+		coalesce((SELECT b.name FROM visits v JOIN branches b ON b.id=v.branch_id WHERE v.company_id=c.company_id AND v.customer_id=c.id GROUP BY b.id,b.name ORDER BY count(*) DESC,max(v.created_at) DESC LIMIT 1),''),
+		coalesce((SELECT b.name FROM visits v JOIN branches b ON b.id=v.branch_id WHERE v.company_id=c.company_id AND v.customer_id=c.id ORDER BY v.created_at DESC LIMIT 1),'')
+		FROM customers c WHERE c.company_id=$1 AND c.id=$2 AND c.deleted_at IS NULL`, companyID(r), r.PathValue("id")).Scan(&c.ID, &c.FirstName, &c.LastName, &c.Phone, &c.Email, &c.Birthday, &c.TotalPoints, &c.TotalVisits, &c.Level, &c.CreatedAt, &c.FavoriteBranch, &c.LastBranch)
 	if errors.Is(err, pgx.ErrNoRows) {
 		fail(w, 404, "CUSTOMER_NOT_FOUND", "Клиент не найден")
 		return
@@ -431,6 +437,16 @@ func (a *api) createVisit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
+	claims, _ := r.Context().Value(identityKey).(tokenClaims)
+	var branchAllowed bool
+	if err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM branches b WHERE b.company_id=$1 AND b.id=$2 AND b.deleted_at IS NULL AND b.is_active AND ($3<>'employee' OR b.id=(SELECT branch_id FROM users WHERE id=$4 AND company_id=$1)))`, tenant, in.BranchID, claims.Role, claims.Subject).Scan(&branchAllowed); err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось проверить филиал")
+		return
+	}
+	if !branchAllowed {
+		fail(w, 403, "BRANCH_ACCESS_DENIED", "Сотрудник может проводить операции только в своём активном филиале")
+		return
+	}
 	var balance, visits int
 	err = tx.QueryRow(r.Context(), `SELECT total_points,total_visits FROM customers WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, tenant, in.CustomerID).Scan(&balance, &visits)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -442,16 +458,28 @@ func (a *api) createVisit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var duplicate bool
-	if err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM visits WHERE company_id=$1 AND customer_id=$2 AND branch_id=$3 AND created_at>now()-interval '30 seconds')`, tenant, in.CustomerID, in.BranchID).Scan(&duplicate); err != nil {
+	if err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM visits WHERE company_id=$1 AND customer_id=$2 AND created_at>now()-interval '2 minutes')`, tenant, in.CustomerID).Scan(&duplicate); err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось проверить последнее посещение")
 		return
 	}
 	if duplicate {
-		fail(w, 409, "DUPLICATE_VISIT", "Посещение уже отмечено. Повторите через 30 секунд, если это новая операция")
+		_ = tx.Rollback(r.Context())
+		a.recordRisk(r, in.CustomerID, in.BranchID, "visit.create", "blocked", "Повторное посещение в течение 2 минут", map[string]any{"windowMinutes": 2})
+		fail(w, 409, "DUPLICATE_VISIT", "Посещение уже отмечено. Новое можно добавить через 2 минуты")
+		return
+	}
+	var visitsToday int
+	if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM visits WHERE company_id=$1 AND customer_id=$2 AND created_at>now()-interval '24 hours'`, tenant, in.CustomerID).Scan(&visitsToday); err != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось проверить лимит посещений")
+		return
+	}
+	if visitsToday >= 5 {
+		_ = tx.Rollback(r.Context())
+		a.recordRisk(r, in.CustomerID, in.BranchID, "visit.create", "blocked", "Превышен дневной лимит посещений", map[string]any{"visits24h": visitsToday})
+		fail(w, 409, "VISIT_LIMIT_REACHED", "За 24 часа уже отмечено 5 посещений. Обратитесь к владельцу")
 		return
 	}
 	points := a.pointsForEvent(r.Context(), tenant, "visit_created", 20)
-	claims, _ := r.Context().Value(identityKey).(tokenClaims)
 	var visitID string
 	err = tx.QueryRow(r.Context(), `INSERT INTO visits(company_id,branch_id,customer_id,employee_id,points_added,comment) SELECT $1,b.id,$3,$4,$5,$6 FROM branches b WHERE b.company_id=$1 AND b.id=$2 AND b.deleted_at IS NULL RETURNING id`, tenant, in.BranchID, in.CustomerID, claims.Subject, points, in.Comment).Scan(&visitID)
 	if err == nil {
@@ -492,7 +520,8 @@ func (a *api) createVisit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) listBranches(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query(r.Context(), `SELECT id,name,address,coalesce(phone,''),is_active FROM branches WHERE company_id=$1 AND deleted_at IS NULL ORDER BY name`, companyID(r))
+	claims := identity(r)
+	rows, err := a.db.Query(r.Context(), `SELECT b.id,b.name,b.address,coalesce(b.phone,''),b.is_active FROM branches b WHERE b.company_id=$1 AND b.deleted_at IS NULL AND ($2<>'employee' OR b.id=(SELECT branch_id FROM users WHERE id=$3 AND company_id=$1)) ORDER BY b.name`, companyID(r), claims.Role, claims.Subject)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить филиалы")
 		return

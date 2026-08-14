@@ -138,6 +138,8 @@ curl -fsS "$API_URL/customers/$dentline_customer/rewards" -H "Authorization: Bea
 curl -fsS "$API_URL/customers/$dentline_customer/timeline" -H "Authorization: Bearer $token" | jq -e '.data | type == "array"' >/dev/null
 cross_status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $docmed_token" "$API_URL/customers/$dentline_customer")
 test "$cross_status" = "404"
+cross_risk=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $docmed_token" "$API_URL/customers/$dentline_customer/risk")
+test "$cross_risk" = "404"
 cross_code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $docmed_token" -H 'Content-Type: application/json' -d "{\"code\":\"$dentline_code\"}" "$API_URL/staff/customers/lookup")
 test "$cross_code" = "404"
 docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM audit_logs WHERE action='customer.code_lookup' AND company_id=(SELECT id FROM companies WHERE slug='dentline')" | grep -Eq '^[1-9][0-9]*$'
@@ -160,6 +162,12 @@ curl -fsS -b "$product_cookies" "$API_URL/customer/wallet" | jq -e '.data.loyalt
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/timeline" | jq -e '.data | any(.type == "customer.registered")' >/dev/null
 visit=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"customerId\":\"$product_customer\",\"branchId\":\"$branch_id\",\"comment\":\"Product DoD\"}" "$API_URL/visits")
 printf '%s' "$visit" | jq -e '.data.totalVisits == 2 and .data.reward == "1 наград"' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer" | jq -e '.data.favoriteBranch != "" and .data.lastBranch == .data.favoriteBranch' >/dev/null
+duplicate_visit=$(curl -sS -o "$fixture_dir/duplicate-visit.json" -w '%{http_code}' -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"customerId\":\"$product_customer\",\"branchId\":\"$branch_id\",\"comment\":\"Duplicate\"}" "$API_URL/visits")
+test "$duplicate_visit" = "409"
+jq -e '.error.code == "DUPLICATE_VISIT"' "$fixture_dir/duplicate-visit.json" >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/risk" | jq -e '.data | any(.operation == "visit.create" and .severity == "blocked" and .status == "open")' >/dev/null
+docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM audit_logs WHERE company_id=(SELECT id FROM companies WHERE slug='dentline') AND action='security.operation_blocked' AND entity_id='$product_customer'" | grep -Eq '^[1-9][0-9]*$'
 reward_id=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/rewards" | jq -r '.data[] | select(.name=="Integration подарок" and .status=="available") | .id' | head -1)
 test -n "$reward_id"
 curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"reason":"Product DoD redemption","idempotencyKey":"product-dod-redemption"}' "$API_URL/rewards/$reward_id/redeem" | jq -e '.data.status == "redeemed"' >/dev/null
