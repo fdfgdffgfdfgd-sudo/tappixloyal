@@ -1,0 +1,8 @@
+.customer-page { display: grid; align-content: start; gap: 10px; }
+.customer-reward-card.reward-available { background: #116b45; }
+.customer-reward-history { min-height: 62px; padding: 11px 13px; border: 1px solid #e0e3e8; border-radius: 13px; background: #fff; display: flex; align-items: center; gap: 11px; }
+.customer-reward-history > svg { width: 18px; color: #16784a; }
+.customer-reward-history > div { display: grid; gap: 4px; }
+.customer-reward-history small { color: #64748b; }
+.customer-reward-history.reward-expired > svg { color: #8a94a3; }
+@media (prefers-reduced-motion: reduce) { .customer-reward-card, .customer-reward-history { transition: none !important; } }

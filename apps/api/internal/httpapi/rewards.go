@@ -327,6 +327,9 @@ func (a *api) issueRewardTx(r *http.Request, tx pgx.Tx, tenant, customerID, defi
 		return "", err
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,'issued','available',$5,nullif($6,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, id, customerID, identity(r).Subject, reason, idempotency)
+	if err == nil {
+		err = appendCustomerEvent(r, tx, tenant, customerID, "reward.unlocked", "", "reward-unlocked:"+id, map[string]any{"rewardId": id, "name": name, "description": description})
+	}
 	return id, err
 }
 
@@ -424,6 +427,9 @@ func (a *api) transitionReward(w http.ResponseWriter, r *http.Request, target st
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$5,$7,nullif($8,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, r.PathValue("id"), customerID, claims.Subject, target, status, strings.TrimSpace(in.Reason), idempotency)
 	}
+	if err == nil && target == "redeemed" {
+		err = appendCustomerEvent(r, tx, tenant, customerID, "reward.redeemed", "", "reward-redeemed:"+r.PathValue("id"), map[string]any{"rewardId": r.PathValue("id"), "reason": strings.TrimSpace(in.Reason)})
+	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "REWARD_TRANSITION_FAILED", "Не удалось изменить статус награды")
 		return
@@ -505,6 +511,9 @@ func (a *api) transitionRewardDirect(w http.ResponseWriter, r *http.Request, tar
 	_, err = tx.Exec(r.Context(), `UPDATE customer_rewards SET status=$3,reserved_at=CASE WHEN $3='reserved' THEN now() ELSE reserved_at END,reserved_until=$4,reserved_by=CASE WHEN $3='reserved' THEN $5 ELSE reserved_by END,redeemed_at=CASE WHEN $3='redeemed' THEN now() ELSE NULL END,redeemed_by=CASE WHEN $3='redeemed' THEN $5 ELSE NULL END,cancelled_at=CASE WHEN $3='cancelled' THEN now() ELSE NULL END,cancelled_by=CASE WHEN $3='cancelled' THEN $5 ELSE NULL END WHERE company_id=$1 AND id=$2`, tenant, r.PathValue("id"), target, reservedUntil, claims.Subject)
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$5,$7,nullif($8,'')) ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, tenant, r.PathValue("id"), customerID, claims.Subject, target, status, in.Reason, idempotency)
+	}
+	if err == nil && target == "redeemed" {
+		err = appendCustomerEvent(r, tx, tenant, customerID, "reward.redeemed", "", "reward-redeemed:"+r.PathValue("id"), map[string]any{"rewardId": r.PathValue("id"), "reason": strings.TrimSpace(in.Reason)})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "REWARD_TRANSITION_FAILED", "Не удалось изменить статус награды")

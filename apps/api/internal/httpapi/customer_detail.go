@@ -146,6 +146,13 @@ func (a *api) customerBonus(w http.ResponseWriter, r *http.Request) {
 		if err == nil && in.Operation == "debit" {
 			err = posintegration.ConsumeBonusLots(r.Context(), tx, tenant, r.PathValue("id"), ledgerID, "", in.Amount)
 		}
+		if err == nil {
+			eventType := "bonus.earned"
+			if in.Operation == "debit" {
+				eventType = "bonus.spent"
+			}
+			err = appendCustomerEvent(r, tx, tenant, r.PathValue("id"), eventType, "", "bonus:"+ledgerID, map[string]any{"amount": in.Amount, "balanceAfter": next, "reason": in.Description, "manual": true})
+		}
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "BONUS_FAILED", "Не удалось выполнить бонусную операцию")

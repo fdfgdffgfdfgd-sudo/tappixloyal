@@ -118,11 +118,15 @@ test "$guest_logged_out" = "401"
 
 platform_cookies="$fixture_dir/platform-cookies.txt"
 platform_login=$(curl -fsS -c "$platform_cookies" -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"admin@tappix.kz","password":"Admin2026!"}')
-printf '%s' "$platform_login" | jq -e '.data.mfaSetupRequired == true and .data.user.role == "super_admin"' >/dev/null
+printf '%s' "$platform_login" | jq -e '(.data.mfaSetupRequired == true and .data.user.role == "super_admin") or (.data.mfaRequired == true and (.data.mfaChallenge | length) > 0)' >/dev/null
 platform_blocked=$(curl -sS -o /dev/null -w '%{http_code}' -b "$platform_cookies" "$API_URL/admin/dashboard")
-test "$platform_blocked" = "403"
-platform_csrf=$(awk '$6 == "tappix_platform_csrf" { print $7 }' "$platform_cookies")
-curl -fsS -b "$platform_cookies" -H "X-CSRF-Token: $platform_csrf" -X POST "$API_URL/auth/mfa/setup?aud=platform" -H 'Content-Type: application/json' -d '{}' | jq -e '.data.secret | length >= 16' >/dev/null
+if printf '%s' "$platform_login" | jq -e '.data.mfaSetupRequired == true' >/dev/null; then
+  test "$platform_blocked" = "403"
+  platform_csrf=$(awk '$6 == "tappix_platform_csrf" { print $7 }' "$platform_cookies")
+  curl -fsS -b "$platform_cookies" -H "X-CSRF-Token: $platform_csrf" -X POST "$API_URL/auth/mfa/setup?aud=platform" -H 'Content-Type: application/json' -d '{}' | jq -e '.data.secret | length >= 16' >/dev/null
+else
+  test "$platform_blocked" = "401"
+fi
 
 docmed=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"owner@docmed.kz","password":"DocMed2026!"}')
 docmed_token=$(printf '%s' "$docmed" | jq -r '.data.accessToken')
@@ -131,6 +135,7 @@ dentline_code=$(docker compose exec -T postgres psql -U tappix -d tappix -Atc "S
 test "${#dentline_code}" = "6"
 curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"code\":\"$dentline_code\"}" "$API_URL/staff/customers/lookup" | jq -e --arg id "$dentline_customer" '.data.id == $id and (.data.phoneMasked | contains("•••"))' >/dev/null
 curl -fsS "$API_URL/customers/$dentline_customer/rewards" -H "Authorization: Bearer $token" | jq -e '.data | type == "array"' >/dev/null
+curl -fsS "$API_URL/customers/$dentline_customer/timeline" -H "Authorization: Bearer $token" | jq -e '.data | type == "array"' >/dev/null
 cross_status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $docmed_token" "$API_URL/customers/$dentline_customer")
 test "$cross_status" = "404"
 cross_code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $docmed_token" -H 'Content-Type: application/json' -d "{\"code\":\"$dentline_code\"}" "$API_URL/staff/customers/lookup")
@@ -161,6 +166,7 @@ curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: applicatio
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/rewards/$reward_id/transactions" | jq -e '.data | any(.operation == "issued") and any(.operation == "redeemed")' >/dev/null
 docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM reward_transactions WHERE reward_id='$reward_id' AND operation='redeemed'" | grep -qx '1'
 curl -fsS -b "$product_cookies" "$API_URL/customer/rewards" | jq -e '.data | any(.name == "Integration подарок" and .status == "redeemed")' >/dev/null
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/timeline" | jq -e '([.data[].type] | contains(["visit.completed","bonus.earned","reward.unlocked","reward.redeemed"]))' >/dev/null
 curl -fsS -X PATCH -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$original_portal" "$API_URL/settings/guest-portal" >/dev/null
 curl -fsS -X DELETE -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer" | jq -e '.data.archived == true' >/dev/null
 

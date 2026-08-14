@@ -112,6 +112,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("PATCH /api/v1/customers/{id}", a.requirePermission("customers.write", http.HandlerFunc(a.updateCustomer)))
 	protected.Handle("DELETE /api/v1/customers/{id}", a.requireRoles(http.HandlerFunc(a.deleteCustomer), "company_owner"))
 	protected.Handle("GET /api/v1/customers/{id}/history", a.requirePermission("customers.read", http.HandlerFunc(a.customerAdminHistory)))
+	protected.Handle("GET /api/v1/customers/{id}/timeline", a.requirePermission("customers.read", http.HandlerFunc(a.customerTimeline)))
 	protected.Handle("GET /api/v1/customers/{id}/rewards", a.requireModule("loyalty", a.requirePermission("customers.read", http.HandlerFunc(a.customerRewards))))
 	protected.Handle("PATCH /api/v1/rewards/{id}", a.requireModule("loyalty", a.requirePermission("rewards.write", http.HandlerFunc(a.updateReward))))
 	protected.Handle("GET /api/v1/reward-definitions", a.requireModule("loyalty", a.requirePermission("rewards.read", http.HandlerFunc(a.listRewardDefinitions))))
@@ -462,6 +463,12 @@ func (a *api) createVisit(w http.ResponseWriter, r *http.Request) {
 		if len(issued) > 0 {
 			rewardName = fmt.Sprintf("%d наград", len(issued))
 		}
+	}
+	if err == nil {
+		err = appendCustomerEvent(r, tx, tenant, in.CustomerID, "visit.completed", in.BranchID, "visit:"+visitID, map[string]any{"visitId": visitID, "pointsAdded": points, "totalVisits": visits + 1})
+	}
+	if err == nil && points > 0 {
+		err = appendCustomerEvent(r, tx, tenant, in.CustomerID, "bonus.earned", in.BranchID, "visit-bonus:"+visitID, map[string]any{"amount": points, "balanceAfter": balance + points, "reason": "Бонус за посещение"})
 	}
 	if err != nil {
 		slog.Error("loyalty.visit.failed", "event_type", "loyalty.visit.failed", "tenant_id", tenant, "actor_id", identity(r).Subject, "customer_id", in.CustomerID, "request_id", r.Header.Get("X-Request-ID"), "error", err)

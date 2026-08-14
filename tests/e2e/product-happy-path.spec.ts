@@ -34,6 +34,12 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await expect(page.getByRole("heading", { name: "Сканер гостя" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Включить камеру" })).toBeEnabled();
   await expect(page.getByText("Нет активного филиала")).toHaveCount(0);
+  await page.getByLabel("Введите код клиента").fill("025 392");
+  await page.getByRole("button", { name: "Найти клиента" }).click();
+  await expect(page.getByRole("heading", { name: "Мадина Тест" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Отметить посещение" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Начислить" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Списать" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(hasHorizontalOverflow).toBe(false);

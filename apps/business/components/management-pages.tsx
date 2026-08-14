@@ -401,6 +401,13 @@ type CustomerReward = {
   expiresAt?: string;
   redeemedAt?: string;
 };
+type CustomerTimelineEvent = {
+  id: string;
+  type: string;
+  occurredAt: string;
+  branch?: string;
+  properties: Record<string, string | number | boolean>;
+};
 export function CustomerDetailPage({ id }: { id: string }) {
   const router = useRouter();
   const [now] = useState(() => Date.now());
@@ -411,20 +418,23 @@ export function CustomerDetailPage({ id }: { id: string }) {
   });
   const [branches, setBranches] = useState<Branch[]>([]);
   const [rewards, setRewards] = useState<CustomerReward[]>([]);
+  const [timeline, setTimeline] = useState<CustomerTimelineEvent[]>([]);
   const [msg, setMsg] = useState("");
   const [bonus, setBonus] = useState<"credit" | "debit" | null>(null);
   const load = async () => {
     try {
-      const [c, h, b, g] = await Promise.all([
+      const [c, h, b, g, events] = await Promise.all([
         api<Customer>(`/customers/${id}`),
         api<CustomerHistory>(`/customers/${id}/history`),
         api<Branch[]>("/branches"),
         api<CustomerReward[]>(`/customers/${id}/rewards`),
+        api<CustomerTimelineEvent[]>(`/customers/${id}/timeline`),
       ]);
       setValue(c);
       setHistory(h);
       setBranches(b);
       setRewards(g);
+      setTimeline(events);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Ошибка");
     }
@@ -712,6 +722,15 @@ export function CustomerDetailPage({ id }: { id: string }) {
               <p>Они появятся после выполнения правила посещений.</p>
             </div>
           )}
+        </section>
+        <section className="data-card customer-event-timeline">
+          <header><div><h2>История клиента</h2><p>Все важные события в одной ленте</p></div><Clock3/></header>
+          {timeline.map((event) => {
+            const labels: Record<string,string> = {"customer.registered":"Зарегистрировался","visit.completed":"Посещение","purchase.completed":"Покупка","bonus.earned":"Бонусы начислены","bonus.spent":"Бонусы списаны","reward.unlocked":"Награда стала доступна","reward.redeemed":"Награда использована","referral.created":"Пригласил друга","referral.converted":"Друг совершил покупку","campaign.sent":"Получил сообщение","campaign.opened":"Открыл сообщение","customer.returned":"Вернулся"};
+            const amount=Number(event.properties.amount||event.properties.pointsAdded||0);
+            return <article key={event.id}><span><Clock3/></span><div><strong>{labels[event.type]||event.type}</strong><small>{new Date(event.occurredAt).toLocaleString("ru-RU")}{event.branch?` · ${event.branch}`:""}</small>{event.properties.reason&&<p>{String(event.properties.reason)}</p>}</div>{amount>0&&<b>{event.type==="bonus.spent"?"−":"+"}{amount}</b>}</article>;
+          })}
+          {!timeline.length&&<div className="zero"><Clock3/><strong>История начнётся с первого действия</strong><p>Регистрация, посещения, покупки, бонусы и награды появятся здесь по времени.</p></div>}
         </section>
         <section className="data-card">
           <h2>Бонусная история</h2>

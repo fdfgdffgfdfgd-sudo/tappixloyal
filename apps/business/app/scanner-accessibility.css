@@ -11,3 +11,87 @@
   opacity: 1 !important;
   transition: none !important;
 }
+
+.staff-fast-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.guest-confirm-head > div > small { color: #216e49 !important; }
+
+.staff-fast-actions button {
+  min-height: 44px;
+  border: 1px solid var(--app-border, #dfe3ea);
+  border-radius: 10px;
+  background: #fff;
+  color: #242737;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.staff-fast-actions svg { width: 17px; }
+
+.staff-reward-ready {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid #b9e2ca;
+  border-radius: 12px;
+  background: #f1fbf5;
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  gap: 11px;
+}
+
+.staff-reward-ready > svg { color: #16784a; }
+.staff-reward-ready div { display: grid; gap: 3px; }
+.staff-reward-ready small { color: #16784a; font-weight: 800; }
+.staff-reward-ready p { margin: 0; color: #58655f; font-size: 12px; }
+.staff-reward-ready button {
+  min-height: 44px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 9px;
+  background: #16784a;
+  color: #fff;
+  font-weight: 750;
+}
+
+.staff-operation-dialog {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, .28);
+  display: grid;
+  gap: 14px;
+}
+
+.staff-operation-dialog h2,
+.staff-operation-dialog p { margin: 0; }
+.staff-operation-dialog p { color: #64748b; line-height: 1.5; }
+.staff-operation-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  background: #eeecff;
+  color: #5145cd;
+  display: grid;
+  place-items: center;
+}
+.staff-operation-dialog label { display: grid; gap: 7px; font-weight: 700; font-size: 13px; }
+.staff-operation-dialog input { min-height: 46px; padding: 0 12px; border: 1px solid #d8dde6; border-radius: 9px; font: inherit; }
+.staff-operation-dialog > div { display: flex; justify-content: flex-end; gap: 8px; }
+.staff-operation-dialog > div button { min-height: 44px; padding: 0 15px; border: 1px solid #d8dde6; border-radius: 9px; background: #fff; font-weight: 700; }
+.staff-operation-dialog > div button:last-child { border-color: #5145cd; background: #5145cd; color: #fff; }
+
+@media (max-width: 520px) {
+  .staff-reward-ready { grid-template-columns: 34px 1fr; }
+  .staff-reward-ready button { grid-column: 1 / -1; width: 100%; }
+}
