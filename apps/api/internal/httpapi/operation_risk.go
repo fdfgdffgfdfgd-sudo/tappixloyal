@@ -44,7 +44,7 @@ func (a *api) riskInvestigations(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "VALIDATION_ERROR", "Неизвестная критичность")
 		return
 	}
-	rows, err := a.db.Query(r.Context(), `SELECT f.id,f.operation,f.rule_code,f.severity,f.status,f.reason,f.metadata,f.created_at,
+	rows, err := a.db.Query(r.Context(), `SELECT f.id,f.operation,f.rule_code,f.severity,f.status,f.reason,f.metadata,f.created_at,coalesce(f.customer_id::text,''),
 		coalesce(c.first_name||' '||c.last_name,''),coalesce(c.phone,''),coalesce(b.name,''),coalesce(u.first_name||' '||u.last_name,''),coalesce(rv.first_name||' '||rv.last_name,''),coalesce(f.resolution,'')
 		FROM operation_risk_flags f LEFT JOIN customers c ON c.id=f.customer_id AND c.company_id=f.company_id
 		LEFT JOIN branches b ON b.id=f.branch_id AND b.company_id=f.company_id LEFT JOIN users u ON u.id=f.actor_id
@@ -57,11 +57,11 @@ func (a *api) riskInvestigations(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		var id, operation, rule, severityValue, statusValue, reason, customer, phone, branch, actor, reviewer, resolution string
+		var id, operation, rule, severityValue, statusValue, reason, customerID, customer, phone, branch, actor, reviewer, resolution string
 		var metadata json.RawMessage
 		var created time.Time
-		if rows.Scan(&id, &operation, &rule, &severityValue, &statusValue, &reason, &metadata, &created, &customer, &phone, &branch, &actor, &reviewer, &resolution) == nil {
-			items = append(items, map[string]any{"id": id, "operation": operation, "ruleCode": rule, "severity": severityValue, "status": statusValue, "reason": reason, "metadata": metadata, "createdAt": created, "customer": strings.TrimSpace(customer), "phone": phone, "branch": branch, "actor": strings.TrimSpace(actor), "reviewer": strings.TrimSpace(reviewer), "resolution": resolution})
+		if rows.Scan(&id, &operation, &rule, &severityValue, &statusValue, &reason, &metadata, &created, &customerID, &customer, &phone, &branch, &actor, &reviewer, &resolution) == nil {
+			items = append(items, map[string]any{"id": id, "operation": operation, "ruleCode": rule, "severity": severityValue, "status": statusValue, "reason": reason, "metadata": metadata, "createdAt": created, "customerId": customerID, "customer": strings.TrimSpace(customer), "phone": phone, "branch": branch, "actor": strings.TrimSpace(actor), "reviewer": strings.TrimSpace(reviewer), "resolution": resolution})
 		}
 	}
 	var open, blocked, reviewed int

@@ -195,7 +195,7 @@ jq -e '.error.code == "DUPLICATE_VISIT"' "$fixture_dir/duplicate-visit.json" >/d
 curl -fsS -H "Authorization: Bearer $token" "$API_URL/customers/$product_customer/risk" | jq -e '.data | any(.operation == "visit.create" and .severity == "blocked" and .status == "open")' >/dev/null
 docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM audit_logs WHERE company_id=(SELECT id FROM companies WHERE slug='dentline') AND action='security.operation_blocked' AND entity_id='$product_customer'" | grep -Eq '^[1-9][0-9]*$'
 risk_response=$(curl -fsS -H "Authorization: Bearer $token" "$API_URL/risk-investigations?status=open&severity=blocked")
-risk_id=$(printf '%s' "$risk_response" | jq -r --arg customer "$product_customer" '.data.items[] | select(.customer != "" and .ruleCode == "rapid_visit") | .id' | head -1)
+risk_id=$(printf '%s' "$risk_response" | jq -r --arg customer "$product_customer" '.data.items[] | select(.customerId == $customer and .ruleCode == "duplicate_operation") | .id' | head -1)
 printf '%s' "$risk_response" | jq -e '.data.summary.open >= 1 and .data.summary.blocked >= 1' >/dev/null
 test -n "$risk_id"
 cross_risk_decision=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $docmed_token" -H 'Content-Type: application/json' -d '{"decision":"reviewed","resolution":"Cross tenant decision"}' "$API_URL/risk-investigations/$risk_id/decision")

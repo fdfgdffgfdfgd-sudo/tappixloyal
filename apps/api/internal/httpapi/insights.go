@@ -122,7 +122,11 @@ func (a *api) auditMutations(next http.Handler) http.Handler {
 		}
 		requestID := w.Header().Get("X-Request-ID")
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
-		_, _ = a.db.Exec(r.Context(), `INSERT INTO audit_logs(company_id,actor_id,action,entity_type,request_id,ip,user_agent) VALUES($1,$2,$3,$4,$5,$6,$7)`, company, claims.Subject, strings.ToLower(r.Method)+" "+r.URL.Path, "http_request", requestID, host, r.UserAgent())
+		// Guest identities are customer UUIDs, not user UUIDs. Preserve the
+		// tenant-scoped request audit without violating the users FK or
+		// misrepresenting a customer as a staff actor.
+		_, _ = a.db.Exec(r.Context(), `INSERT INTO audit_logs(company_id,actor_id,action,entity_type,request_id,ip,user_agent)
+			VALUES($1,(SELECT id FROM users WHERE id=nullif($2,'')::uuid),$3,$4,$5,$6,$7)`, company, claims.Subject, strings.ToLower(r.Method)+" "+r.URL.Path, "http_request", requestID, host, r.UserAgent())
 	})
 }
 func (a *api) auditList(w http.ResponseWriter, r *http.Request) {
