@@ -10,10 +10,5 @@
 .guided-dashboard-card > footer { margin-top: 18px; padding: 13px 14px; border-radius: 10px; background: #f1f5f9; color: #475569; display: flex; align-items: center; gap: 9px; }
 .guided-dashboard-card > footer svg { width: 18px; color: #5b4bce; flex: none; }
 .guided-dashboard-card > footer p { margin: 0; font-size: 13px; }
-.guided-dashboard-card ~ .v2-hero,
-.guided-dashboard-card ~ .v2-metrics,
-.guided-dashboard-card ~ .dashboard-decision-grid,
-.guided-dashboard-card ~ .quick-card,
-.guided-dashboard-card ~ .v2-feed-grid { display: none !important; }
 @media(max-width:920px){.guided-dashboard-card .onboarding-steps{grid-template-columns:1fr 1fr}.guided-dashboard-card .onboarding-head{align-items:flex-start}.guided-dashboard-card .guided-launch-link{white-space:nowrap}}
 @media(max-width:620px){.guided-dashboard-card{padding:19px}.guided-dashboard-card .onboarding-head{display:grid}.guided-dashboard-card .guided-launch-link{width:100%;justify-content:center}.guided-dashboard-card .onboarding-steps{grid-template-columns:1fr}.guided-dashboard-card .onboarding-steps a{min-height:60px;flex-direction:row;align-items:center;justify-content:flex-start}.guided-dashboard-card .onboarding-steps a>svg:last-child{display:block}}
