@@ -179,23 +179,24 @@ func (a *api) businessAnalytics(w http.ResponseWriter, r *http.Request) {
 		rfmSegments = append(rfmSegments, map[string]any{"code": segment, "name": segmentNames[segment], "churnRisk": risk, "customers": customers, "revenue": revenue, "averageLTV": averageLTV})
 	}
 
-	funnelTypes := []string{"smart_link_opened", "registration_started", "customer_registered", "first_purchase_completed", "second_purchase_completed", "reward_earned", "reward_redeemed"}
+	funnelTypes := []string{"smart_link.opened", "registration.started", "customer.registered", "purchase.first", "purchase.second", "reward.unlocked", "reward.redeemed"}
 	funnelCounts := map[string]int{}
-	funnelRows, err := a.db.Query(r.Context(), `SELECT event_type,count(*) FROM customer_events
-		WHERE company_id=$1 AND event_type=ANY($2::varchar[]) GROUP BY event_type`, tenant, funnelTypes)
+	var funnelValues [7]int
+	err = a.db.QueryRow(r.Context(), `SELECT
+		count(*) FILTER(WHERE event_type IN('smart_link.opened','smart_link_opened')),
+		count(*) FILTER(WHERE event_type IN('registration.started','registration_started')),
+		count(*) FILTER(WHERE event_type IN('customer.registered','customer_registered')),
+		count(*) FILTER(WHERE event_type='first_purchase_completed' OR (event_type='purchase.completed' AND properties->>'purchaseNumber'='1')),
+		count(*) FILTER(WHERE event_type='second_purchase_completed' OR (event_type='purchase.completed' AND properties->>'purchaseNumber'='2')),
+		count(*) FILTER(WHERE event_type IN('reward.unlocked','reward_earned')),
+		count(*) FILTER(WHERE event_type IN('reward.redeemed','reward_redeemed'))
+		FROM customer_events WHERE company_id=$1 AND NOT sandbox`, tenant).Scan(&funnelValues[0], &funnelValues[1], &funnelValues[2], &funnelValues[3], &funnelValues[4], &funnelValues[5], &funnelValues[6])
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось рассчитать воронку")
 		return
 	}
-	defer funnelRows.Close()
-	for funnelRows.Next() {
-		var eventType string
-		var count int
-		if err = funnelRows.Scan(&eventType, &count); err != nil {
-			fail(w, 500, "DATABASE_ERROR", "Не удалось прочитать воронку")
-			return
-		}
-		funnelCounts[eventType] = count
+	for index, eventType := range funnelTypes {
+		funnelCounts[eventType] = funnelValues[index]
 	}
 	funnel := make([]map[string]any, 0, len(funnelTypes))
 	previous := 0

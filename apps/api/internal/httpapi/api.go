@@ -180,6 +180,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("PATCH /api/v1/admin/companies/{id}/status", a.requireRoles(http.HandlerFunc(a.adminUpdateCompanyStatus), "super_admin"))
 	protected.Handle("GET /api/v1/analytics", a.requirePermission("analytics.read", http.HandlerFunc(a.analytics)))
 	protected.Handle("GET /api/v1/analytics/business", a.requirePermission("analytics.read", http.HandlerFunc(a.businessAnalytics)))
+	protected.Handle("GET /api/v1/analytics/outcomes", a.requirePermission("analytics.read", http.HandlerFunc(a.businessOutcomes)))
 	protected.Handle("GET /api/v1/analytics/bonus-liability", a.requirePermission("bonus_liability.read", http.HandlerFunc(a.bonusLiability)))
 	protected.Handle("GET /api/v1/analytics/retention", a.requirePermission("analytics.read", http.HandlerFunc(a.retentionCohorts)))
 	protected.Handle("POST /api/v1/analytics/refresh", a.requireRoles(http.HandlerFunc(a.refreshAnalytics), "company_owner"))
@@ -502,6 +503,9 @@ func (a *api) createVisit(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil {
 		err = appendCustomerEvent(r, tx, tenant, in.CustomerID, "visit.completed", in.BranchID, "visit:"+visitID, map[string]any{"visitId": visitID, "pointsAdded": points, "totalVisits": visits + 1})
+	}
+	if err == nil && visits+1 == 2 {
+		err = appendCustomerEvent(r, tx, tenant, in.CustomerID, "customer.returned", in.BranchID, "visit-return:"+visitID, map[string]any{"reason": "second_visit", "totalVisits": visits + 1})
 	}
 	if err == nil && points > 0 {
 		err = appendCustomerEvent(r, tx, tenant, in.CustomerID, "bonus.earned", in.BranchID, "visit-bonus:"+visitID, map[string]any{"amount": points, "balanceAfter": balance + points, "reason": "Бонус за посещение"})

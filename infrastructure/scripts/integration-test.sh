@@ -42,6 +42,7 @@ test "$canonical_unauthorized" = "401"
 
 assert_get_json dashboard /dashboard '.success == true and (.data.latestCustomers | type == "array") and (.data.latestVisits | type == "array") and (.data.onboarding | type == "object") and .data.bonusRedeemed >= 0 and .data.nfcConversion >= 0'
 assert_get_json business-analytics /analytics/business '.success == true and (.data.repeatPurchase.windows | length == 3) and (.data.averageCheck.overall >= 0) and (.data.ltv.type == "historical") and (.data.rfm.segments | type == "array") and (.data.branches | type == "array") and (.data.funnel | length == 7)'
+assert_get_json business-outcomes /analytics/outcomes?days=30 '.data.days == 30 and .data.retention.returnedCustomers >= 0 and .data.automations.attributedRevenue >= 0 and .data.referrals.newCustomers >= 0 and (.data.rewards.bestName | type == "string")'
 curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/analytics/refresh" | jq -e '.data.refreshed == true' >/dev/null
 assert_get_json bonus-liability /analytics/bonus-liability '.data.issued >= 0 and .data.liability >= 0 and .data.expectedRedemptionCost >= 0'
 assert_get_json registration-retention '/analytics/retention?cohortType=registration&periods=4' '.data.grain == "month" and .data.periods == 4 and (.data.cohorts | type == "array")'

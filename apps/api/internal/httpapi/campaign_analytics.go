@@ -42,6 +42,13 @@ func (a *api) recordCampaignEvent(w http.ResponseWriter, r *http.Request) {
 			opened_at=CASE WHEN $4='opened' THEN coalesce(opened_at,now()) ELSE opened_at END,clicked_at=CASE WHEN $4='clicked' THEN coalesce(clicked_at,now()) ELSE clicked_at END
 			WHERE company_id=$1 AND campaign_id=$2 AND id=$3`, companyID(r), r.PathValue("id"), recipientID, in.ConversionType)
 	}
+	if err == nil && (in.ConversionType == "delivered" || in.ConversionType == "opened") {
+		eventType := "campaign.sent"
+		if in.ConversionType == "opened" {
+			eventType = "campaign.opened"
+		}
+		err = appendCustomerEvent(r, tx, companyID(r), in.CustomerID, eventType, "", "campaign-event:"+in.IdempotencyKey, map[string]any{"campaignId": r.PathValue("id"), "conversionType": in.ConversionType})
+	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 500, "CAMPAIGN_EVENT_FAILED", "Не удалось записать событие")
 		return

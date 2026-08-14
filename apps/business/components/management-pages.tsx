@@ -1902,6 +1902,7 @@ type ProAnalytics = {
   rfm: { segments: { code: string; name: string; churnRisk: string; customers: number; revenue: number; averageLTV: number }[] };
 };
 type BonusLiability = { currency: string; issued: number; active: number; redeemed: number; expired: number; liability: number; expectedRedemptionCost: number };
+type BusinessOutcomes = {days:number;retention:{returnedCustomers:number;repeatVisits:number};automations:{messages:number;reachedCustomers:number;returnedCustomers:number;attributedRevenue:number};referrals:{newCustomers:number;repeatCustomers:number;revenue:number};rewards:{bestName:string;redemptions:number};revenue:{members:number;campaignAttributed:number}};
 function MetricDelta({ current, previous }: { current: number; previous: number }) {
   const value = previous === 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
   return <small className={value >= 0 ? "metric-delta up" : "metric-delta down"}>{value >= 0 ? "+" : ""}{value.toFixed(0)}% к прошлому периоду</small>;
@@ -1911,12 +1912,14 @@ export function AnalyticsPage() {
   const [subscription, setSubscription] = useState<AnalyticsSubscription | null>(null);
   const [proData, setProData] = useState<ProAnalytics | null>(null);
   const [liability, setLiability] = useState<BonusLiability | null>(null);
+  const [outcomes, setOutcomes] = useState<BusinessOutcomes | null>(null);
   const [period, setPeriod] = useState("month");
   const [msg, setMsg] = useState("");
   useEffect(() => {
     setData(null);setMsg("");
-    Promise.all([api<AnalyticsData>(`/analytics?period=${period}`),api<AnalyticsSubscription>("/subscription")])
-      .then(([analytics, plan]) => {setData(analytics);setSubscription(plan);const normalized=plan.plan.toLowerCase()==="business"||plan.plan.toLowerCase()==="growth"?"growth":plan.plan.toLowerCase();if(normalized==="pro")return Promise.all([api<ProAnalytics>("/analytics/business"),api<BonusLiability>("/analytics/bonus-liability")]).then(([business,bonus])=>{setProData(business);setLiability(bonus)});setProData(null);setLiability(null)})
+    const days=period==="week"?7:period==="quarter"?90:30;
+    Promise.all([api<AnalyticsData>(`/analytics?period=${period}`),api<AnalyticsSubscription>("/subscription"),api<BusinessOutcomes>(`/analytics/outcomes?days=${days}`)])
+      .then(([analytics, plan, result]) => {setData(analytics);setSubscription(plan);setOutcomes(result);const normalized=plan.plan.toLowerCase()==="business"||plan.plan.toLowerCase()==="growth"?"growth":plan.plan.toLowerCase();if(normalized==="pro")return Promise.all([api<ProAnalytics>("/analytics/business"),api<BonusLiability>("/analytics/bonus-liability")]).then(([business,bonus])=>{setProData(business);setLiability(bonus)});setProData(null);setLiability(null)})
       .catch((e) => setMsg(e.message));
   }, [period]);
   const tier = subscription?.plan.toLowerCase()==="business"?"growth":subscription?.plan.toLowerCase()||"starter";
@@ -1933,7 +1936,7 @@ export function AnalyticsPage() {
       <section className={`analytics-plan analytics-plan-${tier}`}><div><span>{tier==="pro"?<Crown/>:tier==="growth"?<TrendingUp/>:<BarChart3/>}</span><div><small>АНАЛИТИКА {tierName.toLocaleUpperCase("ru-RU")}</small><h2>{tier==="pro"?"Финансовый центр сети":tier==="growth"?"Центр удержания клиентов":"Пульс программы лояльности"}</h2><p>{tier==="pro"?"Выручка, LTV, повторные покупки и обязательства по бонусам.":tier==="growth"?"Сегменты, риск ухода и конкретные аудитории для возврата.":"Только главные показатели без сложных отчётов."}</p></div></div><Link href="/subscription">{tier==="pro"?"Ваш максимальный тариф":"Сравнить тарифы"}</Link></section>
       <div className="toolbar">
         <span>Данные в реальном времени</span>
-        <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+        <select aria-label="Период аналитики" value={period} onChange={(e) => setPeriod(e.target.value)}>
           <option value="week">7 дней</option>
           <option value="month">30 дней</option>
           <option value="quarter">90 дней</option>
@@ -1941,6 +1944,12 @@ export function AnalyticsPage() {
       </div>
       {data && (
         <>
+          {outcomes&&<section className="business-outcomes"><header><div><small>РЕЗУЛЬТАТ ПРОГРАММЫ</small><h2>Что лояльность дала бизнесу?</h2><p>Только подтверждённые события за {outcomes.days} дней. Выручка без контрольной группы называется атрибутированной.</p></div><TrendingUp/></header><div>
+            <article><span><Repeat2/></span><div><small>Возвращаются ли клиенты?</small><strong>{outcomes.retention.returnedCustomers} клиентов вернулись</strong><p>{outcomes.retention.repeatVisits} повторных посещений за период</p></div></article>
+            <article><span><Send/></span><div><small>Что дали автоматизации?</small><strong>{outcomes.automations.returnedCustomers} клиентов вернулись</strong><p>{outcomes.automations.attributedRevenue>0?`${money(outcomes.automations.attributedRevenue)} атрибутированной выручки`:`${outcomes.automations.reachedCustomers} клиентов получили сообщение`}</p></div></article>
+            <article><span><Users/></span><div><small>Работают ли рекомендации?</small><strong>{outcomes.referrals.newCustomers} новых клиентов</strong><p>{outcomes.referrals.repeatCustomers} уже совершили повторную покупку</p></div></article>
+            <article><span><Gift/></span><div><small>Какая награда работает лучше?</small><strong>{outcomes.rewards.bestName||"Пока недостаточно данных"}</strong><p>{outcomes.rewards.redemptions?`${outcomes.rewards.redemptions} использований`:`Появится после первого погашения`}</p></div></article>
+          </div></section>}
           <div className="insight-metrics">
             <article>
               <Users />

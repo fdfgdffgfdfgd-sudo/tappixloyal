@@ -198,6 +198,12 @@ func applyReferralQualification(ctx context.Context, tx pgx.Tx, companyID, custo
 	if err != nil {
 		return err
 	}
+	_, err = tx.Exec(ctx, `INSERT INTO customer_events(company_id,customer_id,event_type,transaction_id,source,properties,idempotency_key)
+		VALUES($1,$2,'referral.converted',$3,'referral',jsonb_build_object('attributionId',$4::text,'referrerCustomerId',$5::text,'netAmount',$6::numeric),$7)
+		ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, companyID, customerID, transactionID, attributionID, referrerID, netAmount, "referral-converted:"+attributionID)
+	if err != nil {
+		return err
+	}
 	availableAt := fmt.Sprintf("now()+make_interval(days=>%d)", delayDays)
 	_, err = tx.Exec(ctx, `INSERT INTO referral_rewards(company_id,attribution_id,beneficiary_customer_id,beneficiary_type,reward_type,reward_value,status,available_at,idempotency_key)
 		SELECT $1,$2,$3,'referrer','points',$4,'pending',`+availableAt+`,$5 WHERE $4>0
@@ -642,14 +648,13 @@ func appendPurchaseEvent(ctx context.Context, tx pgx.Tx, companyID, customerID, 
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM sales_transactions WHERE company_id=$1 AND customer_id=$2 AND status='completed'`, companyID, customerID).Scan(&purchaseCount); err != nil {
 		return err
 	}
-	eventType := "purchase_completed"
-	if purchaseCount == 1 {
-		eventType = "first_purchase_completed"
-	} else if purchaseCount == 2 {
-		eventType = "second_purchase_completed"
-	}
 	_, err := tx.Exec(ctx, `INSERT INTO customer_events(company_id,customer_id,event_type,occurred_at,branch_id,transaction_id,campaign_id,source,properties,idempotency_key)
-		VALUES($1,$2,$3,$4,nullif($5,'')::uuid,$6,nullif($7,'')::uuid,$8,jsonb_build_object('netAmount',$9::numeric,'currency',$10::text),$11)`, companyID, customerID, eventType, in.OccurredAt, branchID, transactionID, in.CampaignID, in.Source, in.NetAmount, in.Currency, "event:"+in.Provider+":"+in.ExternalID)
+		VALUES($1,$2,'purchase.completed',$3,nullif($4,'')::uuid,$5,nullif($6,'')::uuid,$7,jsonb_build_object('netAmount',$8::numeric,'currency',$9::text,'purchaseNumber',$10::integer),$11)`, companyID, customerID, in.OccurredAt, branchID, transactionID, in.CampaignID, in.Source, in.NetAmount, in.Currency, purchaseCount, "event:"+in.Provider+":"+in.ExternalID)
+	if err == nil && purchaseCount == 2 {
+		_, err = tx.Exec(ctx, `INSERT INTO customer_events(company_id,customer_id,event_type,occurred_at,branch_id,transaction_id,source,properties,idempotency_key)
+			VALUES($1,$2,'customer.returned',$3,nullif($4,'')::uuid,$5,$6,jsonb_build_object('reason','second_purchase','purchaseNumber',2),$7)
+			ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, companyID, customerID, in.OccurredAt, branchID, transactionID, in.Source, "return:"+in.Provider+":"+in.ExternalID)
+	}
 	return err
 }
 
