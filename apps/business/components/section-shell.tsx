@@ -31,7 +31,7 @@ const items: readonly (readonly [string, readonly (readonly [string, LucideIcon,
   ["Лояльность", [["/loyalty", Gift, "Программа"], ["/referrals", UsersRound, "Рефералы"]]],
   ["Коммуникации", [["/campaigns", Send, "Кампании и автоматизации"]]],
   ["Аналитика", [["/analytics", BarChart3, "Аналитика"], ["/reports", FileText, "Отчёты"]]],
-  ["Система", [["/integrations", Plug, "Интеграции"], ["/risk-center", ShieldAlert, "Контроль рисков"], ["/employees", Users, "Команда"], ["/settings", Settings, "Настройки"]]],
+  ["Система", [["/integrations", Plug, "Интеграции"], ["/risk-center", ShieldAlert, "Проверка операций"], ["/employees", Users, "Команда"], ["/settings", Settings, "Настройки"]]],
 ] as const;
 const settingsRoutes = new Set([
   "/branches",
