@@ -5,8 +5,10 @@ import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import Link from "next/link";
 import { Branch, Notice } from "./management-shared";
+import { useConfirm } from "./use-confirm";
 
 export function BranchesPage() {
+  const { ask, dialog } = useConfirm();
   const [items, setItems] = useState<Branch[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Branch | null>(null);
@@ -48,7 +50,7 @@ export function BranchesPage() {
     }
   }
   async function remove(id: string) {
-    if (!confirm("Архивировать филиал?")) return;
+    if (!await ask({ title: "Архивировать филиал?", confirmLabel: "Архивировать" })) return;
     try {
       await api(`/branches/${id}`, { method: "DELETE" });
       setMsg("Филиал перенесён в архив");
@@ -155,6 +157,6 @@ export function BranchesPage() {
           </form>
         </div>
       )}
-    </SectionShell>
+    {dialog}</SectionShell>
   );
 }

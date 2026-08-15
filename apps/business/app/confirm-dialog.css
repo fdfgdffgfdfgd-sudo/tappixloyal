@@ -1,0 +1,12 @@
+.confirm-backdrop{position:fixed;z-index:120;inset:0;padding:20px;background:#10131a99;display:grid;place-items:center}
+.confirm-dialog{width:min(420px,100%);padding:24px;border-radius:18px;background:#fff;box-shadow:0 24px 70px #10131a33;display:grid;gap:12px}
+.confirm-icon{width:44px;height:44px;border-radius:12px;background:#fdecee;color:#b42335;display:grid;place-items:center}
+.confirm-icon svg{width:22px}
+.confirm-dialog h2{margin:0;font-size:19px;letter-spacing:-.02em}
+.confirm-dialog p{margin:0;color:#566175;line-height:1.5}
+.confirm-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:6px}
+.confirm-actions button{min-height:44px;padding:0 16px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;font-weight:700}
+.confirm-actions button:hover{background:#f6f7f9}
+.confirm-proceed{border-color:transparent!important;background:#b42335!important;color:#fff!important}
+.confirm-proceed:hover{background:#9b1c2d!important}
+@media(max-width:520px){.confirm-actions{flex-direction:column-reverse}.confirm-actions button{width:100%}}
