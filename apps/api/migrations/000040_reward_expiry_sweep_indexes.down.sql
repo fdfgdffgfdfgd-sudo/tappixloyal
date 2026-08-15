@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS customer_rewards_validity_sweep_idx;
+DROP INDEX IF EXISTS customer_rewards_reservation_sweep_idx;

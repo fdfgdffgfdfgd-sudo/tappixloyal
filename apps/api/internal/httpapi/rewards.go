@@ -535,63 +535,17 @@ func (a *api) transitionRewardDirect(w http.ResponseWriter, r *http.Request, tar
 	write(w, 200, envelope{Success: true, Data: map[string]any{"status": target, "reservedUntil": reservedUntil}})
 }
 
+// expireRewards sweeps this company on demand. StartRewardExpiryWorker runs the
+// same sweep on a timer for every company, so staff never have to remember to
+// press anything; this endpoint stays for the staff member who wants a reward
+// released right now rather than within the next few minutes.
 func (a *api) expireRewards(w http.ResponseWriter, r *http.Request) {
-	tx, err := a.db.Begin(r.Context())
+	released, expired, err := sweepCompanyRewardExpiry(r.Context(), a.db, companyID(r), identity(r).Subject)
 	if err != nil {
-		fail(w, 500, "DATABASE_ERROR", "Не удалось начать обработку")
+		fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось обработать истёкшие награды")
 		return
 	}
-	defer tx.Rollback(r.Context())
-	releasedRows, err := tx.Query(r.Context(), `UPDATE customer_rewards SET status='available',reserved_at=NULL,reserved_until=NULL,reserved_by=NULL WHERE company_id=$1 AND status='reserved' AND reserved_until<=now() AND (expires_at IS NULL OR expires_at>now()) RETURNING id,customer_id`, companyID(r))
-	if err != nil {
-		fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось освободить резервы")
-		return
-	}
-	type releasedReward struct{ id, customerID string }
-	releasedItems := []releasedReward{}
-	for releasedRows.Next() {
-		var id, cid string
-		if releasedRows.Scan(&id, &cid) == nil {
-			releasedItems = append(releasedItems, releasedReward{id: id, customerID: cid})
-		}
-	}
-	releasedRows.Close()
-	for _, item := range releasedItems {
-		if _, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason) VALUES($1,$2,$3,$4,'reservation_released','reserved','available','Истёк срок резерва')`, companyID(r), item.id, item.customerID, identity(r).Subject); err != nil {
-			fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось записать освобождение награды")
-			return
-		}
-	}
-	rows, err := tx.Query(r.Context(), `UPDATE customer_rewards SET status='expired' WHERE company_id=$1 AND status IN ('available','reserved') AND expires_at<=now() RETURNING id,customer_id`, companyID(r))
-	if err != nil {
-		fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось завершить просроченные награды")
-		return
-	}
-	type expiredReward struct{ id, customerID string }
-	expired := []expiredReward{}
-	for rows.Next() {
-		var id, cid string
-		if rows.Scan(&id, &cid) == nil {
-			expired = append(expired, expiredReward{id: id, customerID: cid})
-		}
-	}
-	rows.Close()
-	for _, item := range expired {
-		var name string
-		_ = tx.QueryRow(r.Context(), `SELECT coalesce(d.name,cr.name,'Награда') FROM customer_rewards cr LEFT JOIN reward_definitions d ON d.id=cr.definition_id AND d.company_id=cr.company_id WHERE cr.company_id=$1 AND cr.id=$2`, companyID(r), item.id).Scan(&name)
-		if _, err = tx.Exec(r.Context(), `INSERT INTO reward_transactions(company_id,reward_id,customer_id,actor_id,operation,from_status,to_status,reason) VALUES($1,$2,$3,$4,'expired','available','expired','Истёк срок действия')`, companyID(r), item.id, item.customerID, identity(r).Subject); err == nil {
-			err = appendCustomerEvent(r, tx, companyID(r), item.customerID, "reward.expired", "", "reward-expired:"+item.id, map[string]any{"rewardId": item.id, "name": name})
-		}
-		if err != nil {
-			fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось записать историю просроченной награды")
-			return
-		}
-	}
-	if tx.Commit(r.Context()) != nil {
-		fail(w, 500, "REWARD_EXPIRY_FAILED", "Не удалось сохранить обработку")
-		return
-	}
-	write(w, 200, envelope{Success: true, Data: map[string]int{"expired": len(expired), "reservationsReleased": len(releasedItems)}})
+	write(w, 200, envelope{Success: true, Data: map[string]int{"expired": expired, "reservationsReleased": released}})
 }
 
 func (a *api) rewardTransactions(w http.ResponseWriter, r *http.Request) {

@@ -252,4 +252,39 @@ test "$deleted_file" = "404"
 module_escalation=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "$API_URL/modules/whatsapp" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"enabled":true}')
 test "$module_escalation" = "403"
 
+# The reward expiry worker must do on its own what POST /rewards/expire only does
+# when a staff member asks, and it must do it for every company rather than the
+# one whose owner happened to press the button. Both fixtures below belong to
+# companies nobody calls that endpoint for in this run.
+stale_dentline=$(docker compose exec -T postgres psql -U tappix -d tappix -Atc "INSERT INTO customer_rewards(company_id,customer_id,name,status,reserved_at,reserved_until) SELECT c.id,cu.id,'Зависший резерв dentline','reserved',now()-interval '2 hour',now()-interval '1 hour' FROM companies c JOIN customers cu ON cu.company_id=c.id WHERE c.slug='dentline' LIMIT 1 RETURNING id" | head -1)
+stale_docmed=$(docker compose exec -T postgres psql -U tappix -d tappix -Atc "INSERT INTO customer_rewards(company_id,customer_id,name,status,reserved_at,reserved_until) SELECT c.id,cu.id,'Зависший резерв docmed','reserved',now()-interval '2 hour',now()-interval '1 hour' FROM companies c JOIN customers cu ON cu.company_id=c.id WHERE c.slug='docmed' LIMIT 1 RETURNING id" | head -1)
+test -n "$stale_dentline"
+test -n "$stale_docmed"
+docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT status FROM customer_rewards WHERE id='$stale_docmed'" | grep -qx 'reserved'
+
+# The worker sweeps once at startup, so a restart is the fastest way to observe
+# it without waiting out the interval.
+docker compose restart api >/dev/null
+for _ in $(seq 1 60); do
+  if curl -fsS -o /dev/null "${API_URL%/api/v1}/health" 2>/dev/null; then break; fi
+  sleep 1
+done
+curl -fsS -o /dev/null "${API_URL%/api/v1}/health"
+worker_swept=''
+for _ in $(seq 1 30); do
+  worker_swept=$(docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM customer_rewards WHERE id IN ('$stale_dentline','$stale_docmed') AND status='available' AND reserved_until IS NULL")
+  if [ "$worker_swept" = "2" ]; then break; fi
+  sleep 1
+done
+test "$worker_swept" = "2"
+
+# A release nobody can see in the reward's history is the defect this replaces,
+# and the worker has no acting user, so the history must attribute it to nobody.
+docker compose exec -T postgres psql -U tappix -d tappix -Atc "SELECT count(*) FROM reward_transactions WHERE reward_id IN ('$stale_dentline','$stale_docmed') AND operation='reservation_released' AND actor_id IS NULL" | grep -qx '2'
+restarted_token=$(curl -fsS -X POST "$API_URL/auth/login" -H 'Content-Type: application/json' -d '{"email":"armat@tappix.kz","password":"Tappix2026!"}' | jq -r '.data.accessToken')
+test -n "$restarted_token"
+curl -fsS -H "Authorization: Bearer $restarted_token" "$API_URL/rewards/$stale_dentline/transactions" | jq -e '.data | any(.operation == "reservation_released" and .actor == "System")' >/dev/null
+
+docker compose exec -T postgres psql -U tappix -d tappix -Atc "DELETE FROM customer_rewards WHERE id IN ('$stale_dentline','$stale_docmed')" >/dev/null
+
 printf '%s\n' 'Tappix integration test: PASS'

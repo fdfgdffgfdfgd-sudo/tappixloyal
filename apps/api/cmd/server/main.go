@@ -99,12 +99,14 @@ func startWorkersWhenSchemaReady(ctx context.Context, db *pgxpool.Pool, secret s
 		var ready bool
 		err := db.QueryRow(ctx, `SELECT to_regclass('public.integration_jobs') IS NOT NULL
 			AND to_regclass('public.campaign_automations') IS NOT NULL
-			AND to_regclass('public.analytics_daily_facts') IS NOT NULL`).Scan(&ready)
+			AND to_regclass('public.analytics_daily_facts') IS NOT NULL
+			AND to_regclass('public.reward_transactions') IS NOT NULL`).Scan(&ready)
 		if err == nil && ready {
 			httpapi.StartAutomation(ctx, db)
 			httpapi.StartIntegrationWorkers(ctx, db, secret)
 			httpapi.StartAnalyticsProjectionWorker(ctx, db)
 			httpapi.StartReportWorker(ctx, db, secret)
+			httpapi.StartRewardExpiryWorker(ctx, db)
 			slog.Info("background workers started after schema became ready")
 			return
 		}
