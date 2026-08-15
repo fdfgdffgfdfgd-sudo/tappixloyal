@@ -394,6 +394,7 @@ func (a *api) transitionReward(w http.ResponseWriter, r *http.Request, target st
 	if expires != nil && !expires.After(now) {
 		target = "expired"
 	}
+	status = effectiveRewardStatus(status, reservedUntil, now)
 	valid := false
 	switch target {
 	case "reserved":
@@ -502,6 +503,7 @@ func (a *api) transitionRewardDirect(w http.ResponseWriter, r *http.Request, tar
 		return
 	}
 	now := time.Now()
+	status = effectiveRewardStatus(status, reserved, now)
 	valid := (target == "reserved" && status == "available") || (target == "redeemed" && (status == "available" || (status == "reserved" && (reserved == nil || reserved.After(now))))) || (target == "cancelled" && (status == "available" || status == "reserved"))
 	if expires != nil && !expires.After(now) {
 		valid = false
@@ -609,6 +611,20 @@ func (a *api) rewardTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: items})
+}
+
+// effectiveRewardStatus resolves a reservation that has run out.
+//
+// The reward list already presents such a reward as available, and
+// POST /rewards/expire releases it back to available — but that endpoint is
+// only ever called by hand. Until someone called it, staff saw an available
+// reward in the interface and were refused when they tried to hand it over,
+// with a message saying it had already been processed.
+func effectiveRewardStatus(status string, reservedUntil *time.Time, now time.Time) string {
+	if status == "reserved" && reservedUntil != nil && !reservedUntil.After(now) {
+		return "available"
+	}
+	return status
 }
 
 func rewardCycle(mode string, now time.Time) string {
