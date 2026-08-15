@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"encoding/json"
-	"net"
 	"net/http"
 	"regexp"
 )
@@ -26,7 +25,7 @@ func (a *api) customerByCode(w http.ResponseWriter, r *http.Request) {
 	var id, first, last, phone string
 	var points, visits int
 	err := a.db.QueryRow(r.Context(), `SELECT id,first_name,last_name,phone,total_points,total_visits FROM customers WHERE company_id=$1 AND customer_code=$2 AND deleted_at IS NULL`, claims.CompanyID, code).Scan(&id, &first, &last, &phone, &points, &visits)
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	host := clientIP(r)
 	outcome := "found"
 	var entityID any = id
 	if err != nil {

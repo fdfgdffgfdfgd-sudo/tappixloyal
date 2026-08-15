@@ -309,7 +309,7 @@ func (a *api) issueTokens(r *http.Request, userID, companyID, role string) (stri
 	refresh := base64.RawURLEncoding.EncodeToString(buf)
 	hash := tokenHash(refresh)
 	raw, _ := json.Marshal(sessionData{UserID: userID, CompanyID: companyID, Role: role, SessionID: hash})
-	meta, _ := json.Marshal(map[string]any{"id": hash, "createdAt": time.Now().UTC(), "userAgent": r.UserAgent(), "ip": r.RemoteAddr})
+	meta, _ := json.Marshal(map[string]any{"id": hash, "createdAt": time.Now().UTC(), "userAgent": r.UserAgent(), "ip": clientIP(r)})
 	pipe := a.redis.TxPipeline()
 	sessionTTL := 30 * 24 * time.Hour
 	if role == "customer" {

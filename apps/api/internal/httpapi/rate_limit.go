@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,7 +9,7 @@ import (
 
 func (a *api) rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		host := clientIP(r)
 		limit := 120
 		window := time.Minute
 		if r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/customer/login" || r.URL.Path == "/api/v1/customer/otp/request" || r.URL.Path == "/api/v1/customer/otp/verify" {
