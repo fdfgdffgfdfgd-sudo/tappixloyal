@@ -4,6 +4,7 @@ import { Nfc, Pencil, Plus, QrCode, ToggleLeft, ToggleRight, Trash2 } from "luci
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import { Branch, Notice } from "./management-shared";
+import { useConfirm } from "./use-confirm";
 
 type Device = {
   id: string;
@@ -17,6 +18,7 @@ type Device = {
   scans: number;
 };
 export function LegacyDevicesPage() {
+  const { ask, dialog } = useConfirm();
   const [items, setItems] = useState<Device[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [open, setOpen] = useState(false);
@@ -86,7 +88,7 @@ export function LegacyDevicesPage() {
     }
   }
   async function remove(id: string) {
-    if (!confirm("Удалить устройство?")) return;
+    if (!await ask({ title: "Удалить устройство?", confirmLabel: "Удалить" })) return;
     await api(`/devices/${id}`, { method: "DELETE" });
     setMsg("Устройство удалено");
     await load();
@@ -234,6 +236,6 @@ export function LegacyDevicesPage() {
           </form>
         </div>
       )}
-    </SectionShell>
+    {dialog}</SectionShell>
   );
 }

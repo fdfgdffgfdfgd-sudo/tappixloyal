@@ -15,6 +15,7 @@ import {
 import { api, download } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import { useDialogFocusTrap } from "./use-dialog-focus-trap";
+import { useConfirm } from "./use-confirm";
 
 type Schedule = {
   id: string;
@@ -77,6 +78,7 @@ const statusLabel: Record<string, string> = {
 };
 
 export function ReportsPage() {
+  const { ask, dialog } = useConfirm();
   const [schedules, setSchedules] = useState<Schedule[]>([]),
     [runs, setRuns] = useState<Run[]>([]),
     [loading, setLoading] = useState(true),
@@ -174,7 +176,7 @@ export function ReportsPage() {
   }
   async function remove(id: string) {
     if (
-      !confirm("Удалить расписание? История его запусков также будет удалена.")
+      !await ask({ title: "Удалить расписание?", description: "История его запусков также будет удалена.", confirmLabel: "Удалить" })
     )
       return;
     try {
@@ -472,6 +474,6 @@ export function ReportsPage() {
           </form>
         </div>
       )}
-    </SectionShell>
+    {dialog}</SectionShell>
   );
 }

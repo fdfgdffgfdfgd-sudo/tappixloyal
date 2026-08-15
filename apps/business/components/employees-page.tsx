@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import { Branch, Notice } from "./management-shared";
+import { useConfirm } from "./use-confirm";
 
 type Employee = {
   id: string;
@@ -16,6 +17,7 @@ type Employee = {
   branch?: string;
 };
 export function EmployeesPage() {
+  const { ask, dialog } = useConfirm();
   const [items, setItems] = useState<Employee[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [open, setOpen] = useState(false);
@@ -66,7 +68,7 @@ export function EmployeesPage() {
     }
   }
   async function remove(id: string) {
-    if (!confirm("Удалить сотрудника?")) return;
+    if (!await ask({ title: "Удалить сотрудника?", confirmLabel: "Удалить" })) return;
     try {
       await api(`/employees/${id}`, { method: "DELETE" });
       setMsg("Сотрудник удалён");
@@ -237,6 +239,6 @@ export function EmployeesPage() {
           </form>
         </div>
       )}
-    </SectionShell>
+    {dialog}</SectionShell>
   );
 }

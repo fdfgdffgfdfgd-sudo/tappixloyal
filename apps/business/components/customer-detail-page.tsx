@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { customerLevelLabel } from "@/lib/labels";
 import { SectionShell } from "./section-shell";
 import { Customer, Branch, Notice } from "./management-shared";
+import { useConfirm } from "./use-confirm";
 
 type CustomerHistory = {
   bonuses: {
@@ -43,6 +44,7 @@ type CustomerTimelineEvent = {
 };
 type CustomerRisk = {id:string;operation:string;severity:"warning"|"blocked";status:string;reason:string;createdAt:string;branch?:string;actor?:string};
 export function CustomerDetailPage({ id }: { id: string }) {
+  const { ask, dialog } = useConfirm();
   const router = useRouter();
   const [now] = useState(() => Date.now());
   const [value, setValue] = useState<Customer | null>(null);
@@ -101,7 +103,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
     }
   }
   async function archive() {
-    if (!confirm("Архивировать клиента?")) return;
+    if (!await ask({ title: "Архивировать клиента?", confirmLabel: "Архивировать" })) return;
     await api(`/customers/${id}`, { method: "DELETE" });
     router.push("/customers");
   }
@@ -164,7 +166,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
         subtitle="Загрузка…"
       >
         <Notice text={msg} />
-      </SectionShell>
+      {dialog}</SectionShell>
     );
   const visitDates = history.visits
     .map((visit) => new Date(visit.createdAt).getTime())
@@ -438,6 +440,6 @@ export function CustomerDetailPage({ id }: { id: string }) {
           </form>
         </div>
       )}
-    </SectionShell>
+    {dialog}</SectionShell>
   );
 }
