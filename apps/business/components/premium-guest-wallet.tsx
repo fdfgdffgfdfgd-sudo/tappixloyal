@@ -4,7 +4,7 @@ import { Check, ChevronRight, Copy, Gift, History, Home, LockKeyhole, LogOut, Me
 import { QRCodeSVG } from "qrcode.react";
 import { csrfHeaders } from "@/lib/csrf";
 import { useDialogFocusTrap } from "./use-dialog-focus-trap";
-const base=process.env.NEXT_PUBLIC_API_URL??"http://localhost:8080/api/v1";
+import { API_URL as base } from "@/lib/api";
 type Profile={id:string;firstName:string;lastName:string;phone:string;points:number;visits:number;level:string;company:string;companySlug:string;logoUrl:string;portal:{primaryColor?:string;secondaryColor?:string;themeMode?:string;loyaltyMode?:string;stampsTarget?:number;stampReward?:string;discountStart?:number;discountStep?:number;discountMax?:number;visitsPerStep?:number;referralBonus?:number}};
 type Entry={operation:string;amount:number;balanceAfter:number;description:string;createdAt:string};
 type Wallet={customerCode:string;level:{current:string;next:string;progress:number;remaining:number;nextMin:number};loyalty:{mode:string;eligible:boolean;progress:number;remaining:number;target:number;rewardTitle:string;balancePoints:number;balanceValue:number;discountPercent?:number};bonusValue:number;bonusExpiry:{date?:string;amount:number};nextReward:{title:string;remaining:number;target:number};referralCode:string;referralUrl:string};

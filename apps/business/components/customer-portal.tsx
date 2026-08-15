@@ -4,7 +4,7 @@ import { Check, ChevronRight, Clock3, Gift, Sparkles, Star, WalletCards } from "
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { csrfHeaders } from "@/lib/csrf";
-const base=process.env.NEXT_PUBLIC_API_URL??"http://localhost:8080/api/v1";
+import { API_URL as base } from "@/lib/api";
 type PortalConfig={welcomeTitle?:string;welcomeText?:string;primaryColor?:string;backgroundUrl?:string;logoUrl?:string;requireEmail?:boolean;requireCity?:boolean;showGender?:boolean;promotionsEnabled?:boolean;promotionTitle?:string;promotionText?:string;referralBonus?:number;whatsapp?:string;instagram?:string;website?:string;mapUrl?:string};
 type PublicPortal={companyId:string;company:string;slug:string;logoUrl:string;phone:string;address:string;welcomeBonus:number;portal:PortalConfig};
 function BrandMark({name,logo}:{name:string;logo?:string}){return <div className="guest-brand">{logo?<Image src={logo} alt={`Логотип ${name}`} width={38} height={38} unoptimized/>:<span>{name.slice(0,1).toUpperCase()}</span>}<strong>{name}</strong></div>}
