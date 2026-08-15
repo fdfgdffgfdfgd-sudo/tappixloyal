@@ -15,6 +15,10 @@ function respondWith(identity: unknown, workspaces: unknown[] = []) {
   });
 }
 
+// Focus restoration is scheduled with requestAnimationFrame; wait for it to run.
+const nextFrame = () =>
+  new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
 function renderShell() {
   return render(
     <SectionShell active="/" title="Обзор" subtitle="Сегодня">
@@ -64,6 +68,40 @@ describe("SectionShell", () => {
     expect(screen.getByRole("link", { name: /Клиенты/ })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Настройки/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Интеграции/ })).not.toBeInTheDocument();
+  });
+
+  test("leaves focus alone when Escape is pressed and the palette is closed", async () => {
+    respondWith({ role: "company_owner", firstName: "Мадина", lastName: "Ким" });
+    render(
+      <SectionShell active="/" title="Обзор" subtitle="Сегодня">
+        <button type="button">Действие на странице</button>
+      </SectionShell>,
+    );
+
+    const pageButton = await screen.findByRole("button", { name: "Действие на странице" });
+    pageButton.focus();
+    await userEvent.keyboard("{Escape}");
+
+    // The shell restores focus from a requestAnimationFrame callback, so let a
+    // frame pass before asserting — otherwise this passes before the move.
+    await nextFrame();
+
+    // The shell used to restore focus on every Escape, pulling it away from
+    // whatever dialog the page had just closed.
+    expect(document.activeElement).toBe(pageButton);
+  });
+
+  test("returns focus to the search button when the palette itself is dismissed", async () => {
+    respondWith({ role: "company_owner", firstName: "Мадина", lastName: "Ким" });
+    renderShell();
+
+    const trigger = await screen.findByRole("button", { name: /Найти/ });
+    await userEvent.click(trigger);
+    expect(await screen.findByRole("dialog", { name: "Быстрый переход" })).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    await nextFrame();
+    expect(document.activeElement).toBe(trigger);
   });
 
   test("translates the membership role in the workspace switcher", async () => {
