@@ -82,11 +82,18 @@ func (a *api) customerAdminHistory(w http.ResponseWriter, r *http.Request) {
 		var id, operation, description string
 		var amount, balance int
 		var created time.Time
-		if bonusRows.Scan(&id, &operation, &amount, &balance, &description, &created) == nil {
-			bonuses = append(bonuses, map[string]any{"id": id, "operation": operation, "amount": amount, "balanceAfter": balance, "description": description, "createdAt": created})
+		if err := bonusRows.Scan(&id, &operation, &amount, &balance, &description, &created); err != nil {
+			bonusRows.Close()
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить историю")
+			return
 		}
+		bonuses = append(bonuses, map[string]any{"id": id, "operation": operation, "amount": amount, "balanceAfter": balance, "description": description, "createdAt": created})
 	}
 	bonusRows.Close()
+	if bonusRows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить историю")
+		return
+	}
 	visitRows, err := a.db.Query(r.Context(), `SELECT v.id,v.points_added,v.comment,v.created_at,b.name,coalesce(u.first_name,'System') FROM visits v JOIN branches b ON b.id=v.branch_id LEFT JOIN users u ON u.id=v.employee_id WHERE v.company_id=$1 AND v.customer_id=$2 ORDER BY v.created_at DESC LIMIT 100`, tenant, customerID)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить посещения")
@@ -98,9 +105,15 @@ func (a *api) customerAdminHistory(w http.ResponseWriter, r *http.Request) {
 		var id, comment, branch, employee string
 		var points int
 		var created time.Time
-		if visitRows.Scan(&id, &points, &comment, &created, &branch, &employee) == nil {
-			visits = append(visits, map[string]any{"id": id, "pointsAdded": points, "comment": comment, "createdAt": created, "branch": branch, "employee": employee})
+		if err := visitRows.Scan(&id, &points, &comment, &created, &branch, &employee); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить посещения")
+			return
 		}
+		visits = append(visits, map[string]any{"id": id, "pointsAdded": points, "comment": comment, "createdAt": created, "branch": branch, "employee": employee})
+	}
+	if visitRows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить посещения")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"bonuses": bonuses, "visits": visits}})
 }
@@ -197,9 +210,15 @@ func (a *api) listVisits(w http.ResponseWriter, r *http.Request) {
 		var id, cid, first, last, branch, comment string
 		var points int
 		var created time.Time
-		if rows.Scan(&id, &cid, &first, &last, &branch, &points, &comment, &created) == nil {
-			items = append(items, map[string]any{"id": id, "customerId": cid, "customer": strings.TrimSpace(first + " " + last), "branch": branch, "pointsAdded": points, "comment": comment, "createdAt": created})
+		if err := rows.Scan(&id, &cid, &first, &last, &branch, &points, &comment, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить посещения")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "customerId": cid, "customer": strings.TrimSpace(first + " " + last), "branch": branch, "pointsAdded": points, "comment": comment, "createdAt": created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить посещения")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

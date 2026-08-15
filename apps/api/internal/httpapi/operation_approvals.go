@@ -60,9 +60,15 @@ func (a *api) listOperationApprovals(w http.ResponseWriter, r *http.Request) {
 		var id, operation, reason, approvalStatus, decisionReason, customerID, firstName, lastName, branchID, branchName, requesterFirst, requesterLast string
 		var amount int
 		var requestedAt, expiresAt, decidedAt time.Time
-		if rows.Scan(&id, &operation, &amount, &reason, &approvalStatus, &requestedAt, &expiresAt, &decidedAt, &decisionReason, &customerID, &firstName, &lastName, &branchID, &branchName, &requesterFirst, &requesterLast) == nil {
-			items = append(items, map[string]any{"id": id, "operation": operation, "amount": amount, "reason": reason, "status": approvalStatus, "requestedAt": requestedAt, "expiresAt": expiresAt, "decidedAt": decidedAt, "decisionReason": decisionReason, "customerId": customerID, "customer": strings.TrimSpace(firstName + " " + lastName), "branchId": branchID, "branch": branchName, "requester": strings.TrimSpace(requesterFirst + " " + requesterLast)})
+		if err := rows.Scan(&id, &operation, &amount, &reason, &approvalStatus, &requestedAt, &expiresAt, &decidedAt, &decisionReason, &customerID, &firstName, &lastName, &branchID, &branchName, &requesterFirst, &requesterLast); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить заявки")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "operation": operation, "amount": amount, "reason": reason, "status": approvalStatus, "requestedAt": requestedAt, "expiresAt": expiresAt, "decidedAt": decidedAt, "decisionReason": decisionReason, "customerId": customerID, "customer": strings.TrimSpace(firstName + " " + lastName), "branchId": branchID, "branch": branchName, "requester": strings.TrimSpace(requesterFirst + " " + requesterLast)})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить заявки")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

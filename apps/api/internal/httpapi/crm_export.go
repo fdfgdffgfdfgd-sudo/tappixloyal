@@ -28,9 +28,15 @@ func (a *api) exportCustomers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var first, last, phone, birthday, levelName, created string
 		var visits, points int
-		if rows.Scan(&first, &last, &phone, &birthday, &visits, &points, &levelName, &created) == nil {
-			_ = writer.Write([]string{first, last, phone, birthday, strconv.Itoa(visits), strconv.Itoa(points), levelName, created})
+		if err := rows.Scan(&first, &last, &phone, &birthday, &visits, &points, &levelName, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось подготовить экспорт")
+			return
 		}
+		_ = writer.Write([]string{first, last, phone, birthday, strconv.Itoa(visits), strconv.Itoa(points), levelName, created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось подготовить экспорт")
+		return
 	}
 	writer.Flush()
 }

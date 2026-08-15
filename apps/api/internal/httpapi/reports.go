@@ -73,11 +73,17 @@ func (a *api) listReportSchedules(w http.ResponseWriter, r *http.Request) {
 		var active bool
 		var next, last *time.Time
 		var created time.Time
-		if rows.Scan(&id, &name, &kind, &channel, &recipients, &frequency, &timezone, &hour, &weekday, &monthday, &format, &active, &next, &last, &status, &lastError, &created) == nil {
-			var targets []string
-			_ = json.Unmarshal(recipients, &targets)
-			items = append(items, map[string]any{"id": id, "name": name, "reportType": kind, "channel": channel, "recipients": targets, "frequency": frequency, "timezone": timezone, "sendHour": hour, "sendWeekday": weekday, "sendMonthday": monthday, "format": format, "active": active, "nextRunAt": next, "lastRunAt": last, "lastStatus": status, "lastError": lastError, "createdAt": created})
+		if err := rows.Scan(&id, &name, &kind, &channel, &recipients, &frequency, &timezone, &hour, &weekday, &monthday, &format, &active, &next, &last, &status, &lastError, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить расписания")
+			return
 		}
+		var targets []string
+		_ = json.Unmarshal(recipients, &targets)
+		items = append(items, map[string]any{"id": id, "name": name, "reportType": kind, "channel": channel, "recipients": targets, "frequency": frequency, "timezone": timezone, "sendHour": hour, "sendWeekday": weekday, "sendMonthday": monthday, "format": format, "active": active, "nextRunAt": next, "lastRunAt": last, "lastStatus": status, "lastError": lastError, "createdAt": created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить расписания")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -241,9 +247,15 @@ func (a *api) listReportRuns(w http.ResponseWriter, r *http.Request) {
 		var created, nextAttempt time.Time
 		var completed *time.Time
 		var downloadable bool
-		if rows.Scan(&id, &schedule, &name, &status, &format, &filename, &attempts, &errorText, &created, &completed, &nextAttempt, &downloadable) == nil {
-			items = append(items, map[string]any{"id": id, "scheduleId": schedule, "name": name, "status": status, "format": format, "filename": filename, "attempts": attempts, "error": errorText, "createdAt": created, "completedAt": completed, "nextAttemptAt": nextAttempt, "downloadable": downloadable})
+		if err := rows.Scan(&id, &schedule, &name, &status, &format, &filename, &attempts, &errorText, &created, &completed, &nextAttempt, &downloadable); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить историю отчётов")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "scheduleId": schedule, "name": name, "status": status, "format": format, "filename": filename, "attempts": attempts, "error": errorText, "createdAt": created, "completedAt": completed, "nextAttemptAt": nextAttempt, "downloadable": downloadable})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить историю отчётов")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -334,9 +346,17 @@ func processDueReportSchedules(ctx context.Context, db *pgxpool.Pool) {
 	items := []due{}
 	for rows.Next() {
 		var x due
-		if rows.Scan(&x.id, &x.company, &x.frequency, &x.timezone, &x.hour, &x.weekday, &x.monthday) == nil {
-			items = append(items, x)
+		if err := rows.Scan(&x.id, &x.company, &x.frequency, &x.timezone, &x.hour, &x.weekday, &x.monthday); err != nil {
+			rows.Close()
+			slog.Error("report schedule sweep failed to read a row", "error", err)
+			return
 		}
+		items = append(items, x)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		slog.Error("report schedule sweep ended early", "error", err)
+		return
 	}
 	for _, x := range items {
 		in := reportScheduleInput{Frequency: x.frequency, Timezone: x.timezone, SendHour: x.hour, SendWeekday: x.weekday, SendMonthday: x.monthday}

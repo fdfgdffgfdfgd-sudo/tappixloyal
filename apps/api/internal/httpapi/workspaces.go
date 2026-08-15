@@ -13,9 +13,15 @@ func (a *api) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	for rows.Next() {
 		var id, name, slug, role, plan string
-		if rows.Scan(&id, &name, &slug, &role, &plan) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "slug": slug, "role": role, "plan": plan, "current": id == claims.CompanyID})
+		if err := rows.Scan(&id, &name, &slug, &role, &plan); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить рабочие пространства")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "name": name, "slug": slug, "role": role, "plan": plan, "current": id == claims.CompanyID})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить рабочие пространства")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

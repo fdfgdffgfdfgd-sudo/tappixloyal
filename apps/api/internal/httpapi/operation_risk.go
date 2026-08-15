@@ -60,9 +60,15 @@ func (a *api) riskInvestigations(w http.ResponseWriter, r *http.Request) {
 		var id, operation, rule, severityValue, statusValue, reason, customerID, customer, phone, branch, actor, reviewer, resolution string
 		var metadata json.RawMessage
 		var created time.Time
-		if rows.Scan(&id, &operation, &rule, &severityValue, &statusValue, &reason, &metadata, &created, &customerID, &customer, &phone, &branch, &actor, &reviewer, &resolution) == nil {
-			items = append(items, map[string]any{"id": id, "operation": operation, "ruleCode": rule, "severity": severityValue, "status": statusValue, "reason": reason, "metadata": metadata, "createdAt": created, "customerId": customerID, "customer": strings.TrimSpace(customer), "phone": phone, "branch": branch, "actor": strings.TrimSpace(actor), "reviewer": strings.TrimSpace(reviewer), "resolution": resolution})
+		if err := rows.Scan(&id, &operation, &rule, &severityValue, &statusValue, &reason, &metadata, &created, &customerID, &customer, &phone, &branch, &actor, &reviewer, &resolution); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить расследования")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "operation": operation, "ruleCode": rule, "severity": severityValue, "status": statusValue, "reason": reason, "metadata": metadata, "createdAt": created, "customerId": customerID, "customer": strings.TrimSpace(customer), "phone": phone, "branch": branch, "actor": strings.TrimSpace(actor), "reviewer": strings.TrimSpace(reviewer), "resolution": resolution})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить расследования")
+		return
 	}
 	var open, blocked, reviewed int
 	_ = a.db.QueryRow(r.Context(), `SELECT count(*) FILTER(WHERE status='open'),count(*) FILTER(WHERE status='open' AND severity='blocked'),count(*) FILTER(WHERE status='reviewed' AND reviewed_at>=now()-interval '30 days') FROM operation_risk_flags WHERE company_id=$1`, companyID(r)).Scan(&open, &blocked, &reviewed)
@@ -125,9 +131,15 @@ func (a *api) customerRisk(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, operation, severity, status, reason, branch, actor string
 		var created any
-		if rows.Scan(&id, &operation, &severity, &status, &reason, &created, &branch, &actor) == nil {
-			items = append(items, map[string]any{"id": id, "operation": operation, "severity": severity, "status": status, "reason": reason, "createdAt": created, "branch": branch, "actor": actor})
+		if err := rows.Scan(&id, &operation, &severity, &status, &reason, &created, &branch, &actor); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить контроль операций")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "operation": operation, "severity": severity, "status": status, "reason": reason, "createdAt": created, "branch": branch, "actor": actor})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить контроль операций")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

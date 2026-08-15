@@ -309,11 +309,18 @@ func (a *api) dashboard(w http.ResponseWriter, r *http.Request) {
 			var id, first, last, phone string
 			var points int
 			var created time.Time
-			if rows.Scan(&id, &first, &last, &phone, &points, &created) == nil {
-				latestCustomers = append(latestCustomers, map[string]any{"id": id, "name": strings.TrimSpace(first + " " + last), "phone": phone, "points": points, "createdAt": created})
+			if err := rows.Scan(&id, &first, &last, &phone, &points, &created); err != nil {
+				rows.Close()
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить последних клиентов")
+				return
 			}
+			latestCustomers = append(latestCustomers, map[string]any{"id": id, "name": strings.TrimSpace(first + " " + last), "phone": phone, "points": points, "createdAt": created})
 		}
 		rows.Close()
+		if rows.Err() != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить последних клиентов")
+			return
+		}
 	}
 	latestVisits := []map[string]any{}
 	visitRows, err := a.db.Query(r.Context(), `SELECT v.id,c.first_name,c.last_name,b.name,v.points_added,v.created_at FROM visits v JOIN customers c ON c.id=v.customer_id JOIN branches b ON b.id=v.branch_id WHERE v.company_id=$1 ORDER BY v.created_at DESC LIMIT 5`, companyID(r))
@@ -326,11 +333,18 @@ func (a *api) dashboard(w http.ResponseWriter, r *http.Request) {
 			var id, first, last, branch string
 			var points int
 			var created time.Time
-			if visitRows.Scan(&id, &first, &last, &branch, &points, &created) == nil {
-				latestVisits = append(latestVisits, map[string]any{"id": id, "customer": strings.TrimSpace(first + " " + last), "branch": branch, "points": points, "createdAt": created})
+			if err := visitRows.Scan(&id, &first, &last, &branch, &points, &created); err != nil {
+				visitRows.Close()
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить последние визиты")
+				return
 			}
+			latestVisits = append(latestVisits, map[string]any{"id": id, "customer": strings.TrimSpace(first + " " + last), "branch": branch, "points": points, "createdAt": created})
 		}
 		visitRows.Close()
+		if visitRows.Err() != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить последние визиты")
+			return
+		}
 	}
 	conversion := 0.0
 	if scans > 0 {
@@ -375,6 +389,10 @@ func (a *api) listCustomers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, c)
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось прочитать клиентов")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"items": items, "page": page, "limit": limit, "total": total, "pages": (total + limit - 1) / limit}})
 }
@@ -550,9 +568,15 @@ func (a *api) listBranches(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, name, address, phone string
 		var active bool
-		if rows.Scan(&id, &name, &address, &phone, &active) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "address": address, "phone": phone, "active": active})
+		if err := rows.Scan(&id, &name, &address, &phone, &active); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить филиалы")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "name": name, "address": address, "phone": phone, "active": active})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить филиалы")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -567,19 +591,25 @@ func (a *api) listModules(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var code, name string
 		var core, enabled bool
-		if rows.Scan(&code, &name, &core, &enabled) == nil {
-			if code == "analytics" {
-				name = "Расширенная аналитика"
-			}
-			included := a.moduleIncluded(r.Context(), companyID(r), code)
-			requiredPlan := "Growth"
-			if code == "api" {
-				requiredPlan = "Pro"
-			} else if included && (core || code == "crm" || code == "loyalty" || code == "reviews") {
-				requiredPlan = "Starter"
-			}
-			items = append(items, map[string]any{"code": code, "name": name, "core": core, "enabled": included && (enabled || core), "available": included, "requiredPlan": requiredPlan})
+		if err := rows.Scan(&code, &name, &core, &enabled); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить модули")
+			return
 		}
+		if code == "analytics" {
+			name = "Расширенная аналитика"
+		}
+		included := a.moduleIncluded(r.Context(), companyID(r), code)
+		requiredPlan := "Growth"
+		if code == "api" {
+			requiredPlan = "Pro"
+		} else if included && (core || code == "crm" || code == "loyalty" || code == "reviews") {
+			requiredPlan = "Starter"
+		}
+		items = append(items, map[string]any{"code": code, "name": name, "core": core, "enabled": included && (enabled || core), "available": included, "requiredPlan": requiredPlan})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить модули")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

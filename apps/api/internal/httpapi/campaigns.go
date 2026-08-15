@@ -37,9 +37,15 @@ func (a *api) listCampaigns(w http.ResponseWriter, r *http.Request) {
 		var messageCost, rewardCost float64
 		var created time.Time
 		var sentAt *time.Time
-		if rows.Scan(&id, &name, &channel, &subject, &segment, &status, &audience, &sent, &failed, &messageCost, &rewardCost, &attributionDays, &holdoutPercent, &created, &sentAt) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "channel": channel, "subject": subject, "segment": segment, "status": status, "audienceCount": audience, "sentCount": sent, "failedCount": failed, "messageCost": messageCost, "rewardCost": rewardCost, "attributionWindowDays": attributionDays, "holdoutPercent": holdoutPercent, "createdAt": created, "sentAt": sentAt})
+		if err := rows.Scan(&id, &name, &channel, &subject, &segment, &status, &audience, &sent, &failed, &messageCost, &rewardCost, &attributionDays, &holdoutPercent, &created, &sentAt); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить кампании")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "name": name, "channel": channel, "subject": subject, "segment": segment, "status": status, "audienceCount": audience, "sentCount": sent, "failedCount": failed, "messageCost": messageCost, "rewardCost": rewardCost, "attributionWindowDays": attributionDays, "holdoutPercent": holdoutPercent, "createdAt": created, "sentAt": sentAt})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить кампании")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -94,9 +100,13 @@ func (a *api) campaignAudience(r *http.Request, id string) ([]map[string]string,
 	items := []map[string]string{}
 	for rows.Next() {
 		var cid, first, last, email string
-		if rows.Scan(&cid, &first, &last, &email) == nil {
-			items = append(items, map[string]string{"id": cid, "name": strings.TrimSpace(first + " " + last), "email": email})
+		if err := rows.Scan(&cid, &first, &last, &email); err != nil {
+			return nil, err
 		}
+		items = append(items, map[string]string{"id": cid, "name": strings.TrimSpace(first + " " + last), "email": email})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return items, nil
 }

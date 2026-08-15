@@ -33,9 +33,15 @@ func (a *api) listCampaignAutomations(w http.ResponseWriter, r *http.Request) {
 		var active bool
 		var updated time.Time
 		var runs, sent, failed int
-		if rows.Scan(&id, &trigger, &name, &channel, &subject, &message, &settings, &active, &updated, &runs, &sent, &failed) == nil {
-			items = append(items, map[string]any{"id": id, "triggerType": trigger, "name": name, "channel": channel, "subject": subject, "message": message, "settings": settings, "active": active, "updatedAt": updated, "runs": runs, "sent": sent, "failed": failed})
+		if err := rows.Scan(&id, &trigger, &name, &channel, &subject, &message, &settings, &active, &updated, &runs, &sent, &failed); err != nil {
+			fail(w, 500, "AUTOMATIONS_FAILED", "Не удалось загрузить автоматизации")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "triggerType": trigger, "name": name, "channel": channel, "subject": subject, "message": message, "settings": settings, "active": active, "updatedAt": updated, "runs": runs, "sent": sent, "failed": failed})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "AUTOMATIONS_FAILED", "Не удалось загрузить автоматизации")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

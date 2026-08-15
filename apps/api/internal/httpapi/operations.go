@@ -39,9 +39,15 @@ func (a *api) listEmployees(w http.ResponseWriter, r *http.Request) {
 		var id, first, last, email, role, status string
 		var login *time.Time
 		var branchID, branch *string
-		if rows.Scan(&id, &first, &last, &email, &role, &status, &login, &branchID, &branch) == nil {
-			items = append(items, map[string]any{"id": id, "firstName": first, "lastName": last, "email": email, "role": role, "status": status, "lastLoginAt": login, "branchId": branchID, "branch": branch})
+		if err := rows.Scan(&id, &first, &last, &email, &role, &status, &login, &branchID, &branch); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить сотрудников")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "firstName": first, "lastName": last, "email": email, "role": role, "status": status, "lastLoginAt": login, "branchId": branchID, "branch": branch})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить сотрудников")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -182,9 +188,15 @@ func (a *api) getSubscription(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var code string
-			if rows.Scan(&code) == nil {
-				modules = append(modules, code)
+			if err := rows.Scan(&code); err != nil {
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить подключённые модули")
+				return
 			}
+			modules = append(modules, code)
+		}
+		if rows.Err() != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить подключённые модули")
+			return
 		}
 	}
 	entitlements := map[string]any{}
@@ -200,9 +212,15 @@ func (a *api) getSubscription(w http.ResponseWriter, r *http.Request) {
 				var code string
 				var enabled bool
 				var limit *int
-				if entitlementRows.Scan(&code, &enabled, &limit) == nil {
-					entitlements[code] = map[string]any{"enabled": enabled, "limit": limit}
+				if err := entitlementRows.Scan(&code, &enabled, &limit); err != nil {
+					fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить лимиты тарифа")
+					return
 				}
+				entitlements[code] = map[string]any{"enabled": enabled, "limit": limit}
+			}
+			if entitlementRows.Err() != nil {
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить лимиты тарифа")
+				return
 			}
 		}
 	}
@@ -222,10 +240,16 @@ func (a *api) listDevices(w http.ResponseWriter, r *http.Request) {
 		var active bool
 		var scans int64
 		var last *time.Time
-		if rows.Scan(&id, &branchID, &branch, &kind, &name, &token, &destination, &active, &scans, &last) == nil {
-			publicURL := strings.TrimRight(envOr("APP_URL", "http://localhost:8088"), "/") + "/join/" + token
-			items = append(items, map[string]any{"id": id, "branchId": branchID, "branch": branch, "kind": kind, "name": name, "token": token, "url": publicURL, "destination": destination, "active": active, "scans": scans, "lastScannedAt": last})
+		if err := rows.Scan(&id, &branchID, &branch, &kind, &name, &token, &destination, &active, &scans, &last); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить устройства")
+			return
 		}
+		publicURL := strings.TrimRight(envOr("APP_URL", "http://localhost:8088"), "/") + "/join/" + token
+		items = append(items, map[string]any{"id": id, "branchId": branchID, "branch": branch, "kind": kind, "name": name, "token": token, "url": publicURL, "destination": destination, "active": active, "scans": scans, "lastScannedAt": last})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить устройства")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

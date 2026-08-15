@@ -58,9 +58,15 @@ func (a *api) customerTimeline(w http.ResponseWriter, r *http.Request) {
 		var id, eventType, source, branch string
 		var occurred time.Time
 		var properties map[string]any
-		if rows.Scan(&id, &eventType, &occurred, &source, &properties, &branch) == nil {
-			items = append(items, map[string]any{"id": id, "type": eventType, "occurredAt": occurred, "source": source, "branch": branch, "properties": properties})
+		if err := rows.Scan(&id, &eventType, &occurred, &source, &properties, &branch); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить события клиента")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "type": eventType, "occurredAt": occurred, "source": source, "branch": branch, "properties": properties})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить события клиента")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

@@ -71,9 +71,17 @@ func (a *api) referralAnalytics(w http.ResponseWriter, r *http.Request) {
 			var id, name, code string
 			var invited, paid int
 			var amount float64
-			if rows.Scan(&id, &name, &code, &invited, &paid, &amount) == nil {
-				leaders = append(leaders, map[string]any{"customerId": id, "name": name, "referralCode": code, "invited": invited, "rewarded": paid, "revenue": amount})
+			if err := rows.Scan(&id, &name, &code, &invited, &paid, &amount); err != nil {
+				rows.Close()
+				fail(w, 500, "REFERRAL_STATS_FAILED", "Не удалось загрузить реферальную статистику")
+				return
 			}
+			leaders = append(leaders, map[string]any{"customerId": id, "name": name, "referralCode": code, "invited": invited, "rewarded": paid, "revenue": amount})
+		}
+		if rows.Err() != nil {
+			rows.Close()
+			fail(w, 500, "REFERRAL_STATS_FAILED", "Не удалось загрузить реферальную статистику")
+			return
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"clicks": clicks, "registrations": registrations, "qualified": qualified, "rewarded": rewarded, "revenue": revenue, "rewardCost": rewards, "conversionRate": percentage(registrations, clicks), "qualificationRate": percentage(qualified, registrations), "leaders": leaders}})

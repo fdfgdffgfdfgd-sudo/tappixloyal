@@ -54,9 +54,15 @@ func (a *api) rewardsFor(w http.ResponseWriter, r *http.Request, customerID stri
 		var expires, reserved, redeemed *time.Time
 		var value int
 		var definitionID *string
-		if rows.Scan(&id, &name, &description, &status, &issued, &expires, &reserved, &redeemed, &kind, &value, &definitionID) == nil {
-			items = append(items, map[string]any{"id": id, "definitionId": definitionID, "name": name, "description": description, "status": status, "rewardType": kind, "value": value, "issuedAt": issued, "expiresAt": expires, "reservedUntil": reserved, "redeemedAt": redeemed})
+		if err := rows.Scan(&id, &name, &description, &status, &issued, &expires, &reserved, &redeemed, &kind, &value, &definitionID); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить награды")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "definitionId": definitionID, "name": name, "description": description, "status": status, "rewardType": kind, "value": value, "issuedAt": issued, "expiresAt": expires, "reservedUntil": reserved, "redeemedAt": redeemed})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить награды")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -82,9 +88,15 @@ func (a *api) listRewardDefinitions(w http.ResponseWriter, r *http.Request) {
 		var repeatable, active bool
 		var branches []string
 		var created time.Time
-		if rows.Scan(&id, &name, &description, &kind, &value, &validity, &repeatable, &cooldown, &inventory, &issued, &confirmation, &branches, &active, &created, &rules) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "description": description, "rewardType": kind, "value": value, "validityDays": validity, "repeatable": repeatable, "cooldownDays": cooldown, "inventoryTotal": inventory, "inventoryIssued": issued, "inventoryRemaining": remainingInventory(inventory, issued), "confirmationMethod": confirmation, "branchIds": branches, "active": active, "activeRules": rules, "createdAt": created})
+		if err := rows.Scan(&id, &name, &description, &kind, &value, &validity, &repeatable, &cooldown, &inventory, &issued, &confirmation, &branches, &active, &created, &rules); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить каталог наград")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "name": name, "description": description, "rewardType": kind, "value": value, "validityDays": validity, "repeatable": repeatable, "cooldownDays": cooldown, "inventoryTotal": inventory, "inventoryIssued": issued, "inventoryRemaining": remainingInventory(inventory, issued), "confirmationMethod": confirmation, "branchIds": branches, "active": active, "activeRules": rules, "createdAt": created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить каталог наград")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -176,9 +188,15 @@ func (a *api) listRewardRules(w http.ResponseWriter, r *http.Request) {
 		var threshold, priority int
 		var active bool
 		var created time.Time
-		if rows.Scan(&id, &did, &name, &event, &threshold, &mode, &priority, &active, &created) == nil {
-			items = append(items, map[string]any{"id": id, "definitionId": did, "rewardName": name, "eventType": event, "threshold": threshold, "progressMode": mode, "priority": priority, "active": active, "createdAt": created})
+		if err := rows.Scan(&id, &did, &name, &event, &threshold, &mode, &priority, &active, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить правила")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "definitionId": did, "rewardName": name, "eventType": event, "threshold": threshold, "progressMode": mode, "priority": priority, "active": active, "createdAt": created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить правила")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -245,9 +263,15 @@ func (a *api) customerRewardProgress(w http.ResponseWriter, r *http.Request) {
 		var current, target int
 		var completed *time.Time
 		var updated time.Time
-		if rows.Scan(&id, &ruleID, &definitionID, &name, &current, &target, &status, &cycle, &completed, &updated) == nil {
-			items = append(items, map[string]any{"id": id, "ruleId": ruleID, "definitionId": definitionID, "name": name, "currentValue": current, "targetValue": target, "status": status, "cycleKey": cycle, "completedAt": completed, "updatedAt": updated})
+		if err := rows.Scan(&id, &ruleID, &definitionID, &name, &current, &target, &status, &cycle, &completed, &updated); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить прогресс")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "ruleId": ruleID, "definitionId": definitionID, "name": name, "currentValue": current, "targetValue": target, "status": status, "cycleKey": cycle, "completedAt": completed, "updatedAt": updated})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить прогресс")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -560,9 +584,15 @@ func (a *api) rewardTransactions(w http.ResponseWriter, r *http.Request) {
 		var id, op, to, reason, actor string
 		var from *string
 		var created time.Time
-		if rows.Scan(&id, &op, &from, &to, &reason, &created, &actor) == nil {
-			items = append(items, map[string]any{"id": id, "operation": op, "fromStatus": from, "toStatus": to, "reason": reason, "actor": actor, "createdAt": created})
+		if err := rows.Scan(&id, &op, &from, &to, &reason, &created, &actor); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить аудит награды")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "operation": op, "fromStatus": from, "toStatus": to, "reason": reason, "actor": actor, "createdAt": created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить аудит награды")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -603,11 +633,16 @@ func (a *api) evaluateRewardEvent(r *http.Request, tx pgx.Tx, tenant, customerID
 	rules := []rule{}
 	for rows.Next() {
 		var x rule
-		if rows.Scan(&x.id, &x.definition, &x.threshold, &x.mode) == nil {
-			rules = append(rules, x)
+		if err := rows.Scan(&x.id, &x.definition, &x.threshold, &x.mode); err != nil {
+			rows.Close()
+			return nil, err
 		}
+		rules = append(rules, x)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	issued := []string{}
 	for _, x := range rules {
 		cycle := rewardCycle(x.mode, time.Now())

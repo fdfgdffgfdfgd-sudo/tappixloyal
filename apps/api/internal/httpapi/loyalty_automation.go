@@ -58,11 +58,16 @@ func processReferralRewards(ctx context.Context, db *pgxpool.Pool, onlyCompany s
 	items := []candidate{}
 	for rows.Next() {
 		var x candidate
-		if rows.Scan(&x.id, &x.company, &x.attribution, &x.customer, &x.amount, &x.key) == nil {
-			items = append(items, x)
+		if err := rows.Scan(&x.id, &x.company, &x.attribution, &x.customer, &x.amount, &x.key); err != nil {
+			rows.Close()
+			return 0, err
 		}
+		items = append(items, x)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
 	issued := 0
 	for _, x := range items {
 		tx, beginErr := db.Begin(ctx)
@@ -120,9 +125,17 @@ func processBirthdayBonuses(ctx context.Context, db *pgxpool.Pool, onlyCompany s
 	items := []item{}
 	for rows.Next() {
 		var x item
-		if rows.Scan(&x.id, &x.company, &x.amount) == nil && x.amount > 0 {
+		if err := rows.Scan(&x.id, &x.company, &x.amount); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if x.amount > 0 {
 			items = append(items, x)
 		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
 	}
 	processed := 0
 	year := time.Now().UTC().Year()
@@ -206,11 +219,16 @@ func processCampaignAutomations(ctx context.Context, db *pgxpool.Pool, onlyCompa
 	items := []automationCandidate{}
 	for rows.Next() {
 		var item automationCandidate
-		if rows.Scan(&item.automationID, &item.companyID, &item.customerID, &item.triggerType, &item.triggerKey, &item.name, &item.email, &item.phone, &item.channel, &item.subject, &item.message, &item.amount) == nil {
-			items = append(items, item)
+		if err := rows.Scan(&item.automationID, &item.companyID, &item.customerID, &item.triggerType, &item.triggerKey, &item.name, &item.email, &item.phone, &item.channel, &item.subject, &item.message, &item.amount); err != nil {
+			rows.Close()
+			return 0, err
 		}
+		items = append(items, item)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
 	processed := 0
 	for _, item := range items {
 		status, errorText := "sent", ""
@@ -359,9 +377,15 @@ func (a *api) inactiveCustomers(w http.ResponseWriter, r *http.Request) {
 		var id, first, last, phone string
 		var points, visits int
 		var lastVisit *time.Time
-		if rows.Scan(&id, &first, &last, &phone, &points, &visits, &lastVisit) == nil {
-			items = append(items, map[string]any{"id": id, "firstName": first, "lastName": last, "phone": phone, "points": points, "visits": visits, "lastVisitAt": lastVisit})
+		if err := rows.Scan(&id, &first, &last, &phone, &points, &visits, &lastVisit); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось найти неактивных клиентов")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "firstName": first, "lastName": last, "phone": phone, "points": points, "visits": visits, "lastVisitAt": lastVisit})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось найти неактивных клиентов")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"days": days, "items": items, "total": len(items)}})
 }

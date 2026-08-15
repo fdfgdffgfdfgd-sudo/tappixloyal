@@ -47,9 +47,15 @@ func (a *api) listPartnerships(w http.ResponseWriter, r *http.Request) {
 		var approved any
 		var created any
 		var offers, redemptions int
-		if rows.Scan(&id, &name, &status, &initiator, &partner, &initiatorName, &partnerName, &approved, &created, &offers, &redemptions) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "status": status, "initiatorCompanyId": initiator, "partnerCompanyId": partner, "initiatorName": initiatorName, "partnerName": partnerName, "approvedAt": approved, "createdAt": created, "offers": offers, "redemptions": redemptions})
+		if err := rows.Scan(&id, &name, &status, &initiator, &partner, &initiatorName, &partnerName, &approved, &created, &offers, &redemptions); err != nil {
+			fail(w, 500, "PARTNERSHIPS_FAILED", "Не удалось загрузить партнёрства")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "name": name, "status": status, "initiatorCompanyId": initiator, "partnerCompanyId": partner, "initiatorName": initiatorName, "partnerName": partnerName, "approvedAt": approved, "createdAt": created, "offers": offers, "redemptions": redemptions})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "PARTNERSHIPS_FAILED", "Не удалось загрузить партнёрства")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

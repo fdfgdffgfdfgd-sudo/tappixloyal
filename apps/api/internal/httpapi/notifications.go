@@ -25,9 +25,15 @@ func (a *api) listNotifications(w http.ResponseWriter, r *http.Request) {
 		var id, channel, recipient, subject, body, status string
 		var sent *time.Time
 		var created time.Time
-		if rows.Scan(&id, &channel, &recipient, &subject, &body, &status, &sent, &created) == nil {
-			items = append(items, map[string]any{"id": id, "channel": channel, "recipient": recipient, "subject": subject, "body": body, "status": status, "sentAt": sent, "createdAt": created})
+		if err := rows.Scan(&id, &channel, &recipient, &subject, &body, &status, &sent, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить уведомления")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "channel": channel, "recipient": recipient, "subject": subject, "body": body, "status": status, "sentAt": sent, "createdAt": created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить уведомления")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

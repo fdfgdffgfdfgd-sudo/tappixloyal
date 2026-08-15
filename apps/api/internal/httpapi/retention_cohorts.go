@@ -109,6 +109,10 @@ func (a *api) retentionCohorts(w http.ResponseWriter, r *http.Request) {
 			cohorts[key].Cells[*period].Rate = percentage(*retained, size)
 		}
 	}
+	if rows.Err() != nil {
+		fail(w, 500, "RETENTION_FAILED", "Не удалось прочитать когорты удержания")
+		return
+	}
 	items := make([]map[string]any, 0, len(order))
 	for _, key := range order {
 		item := cohorts[key]

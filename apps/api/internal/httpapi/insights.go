@@ -47,9 +47,15 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var date time.Time
 		var customers, visits, points, firstVisits, repeatVisits int
-		if rows.Scan(&date, &customers, &visits, &points, &firstVisits, &repeatVisits) == nil {
-			series = append(series, map[string]any{"date": date, "customers": customers, "visits": visits, "points": points, "firstVisits": firstVisits, "repeatVisits": repeatVisits})
+		if err := rows.Scan(&date, &customers, &visits, &points, &firstVisits, &repeatVisits); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить аналитику")
+			return
 		}
+		series = append(series, map[string]any{"date": date, "customers": customers, "visits": visits, "points": points, "firstVisits": firstVisits, "repeatVisits": repeatVisits})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить аналитику")
+		return
 	}
 	var totalCustomers, periodVisits, pointsIssued, pointsRedeemed, active, repeatActive, newCustomers int
 	_ = a.db.QueryRow(r.Context(), `SELECT
@@ -93,9 +99,17 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 		for topRows.Next() {
 			var id, first, last, level string
 			var visits, points int
-			if topRows.Scan(&id, &first, &last, &visits, &points, &level) == nil {
-				top = append(top, map[string]any{"id": id, "name": strings.TrimSpace(first + " " + last), "visits": visits, "points": points, "level": level})
+			if err := topRows.Scan(&id, &first, &last, &visits, &points, &level); err != nil {
+				topRows.Close()
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить топ клиентов")
+				return
 			}
+			top = append(top, map[string]any{"id": id, "name": strings.TrimSpace(first + " " + last), "visits": visits, "points": points, "level": level})
+		}
+		topRows.Close()
+		if topRows.Err() != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить топ клиентов")
+			return
 		}
 	}
 	var peakHour int
@@ -153,9 +167,15 @@ func (a *api) auditList(w http.ResponseWriter, r *http.Request) {
 		var action, entity, requestID, user, company string
 		var ip string
 		var created time.Time
-		if rows.Scan(&id, &action, &entity, &requestID, &ip, &created, &user, &company) == nil {
-			items = append(items, map[string]any{"id": id, "action": action, "entityType": entity, "requestId": requestID, "ip": ip, "createdAt": created, "user": user, "company": company})
+		if err := rows.Scan(&id, &action, &entity, &requestID, &ip, &created, &user, &company); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить аудит")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "action": action, "entityType": entity, "requestId": requestID, "ip": ip, "createdAt": created, "user": user, "company": company})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить аудит")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

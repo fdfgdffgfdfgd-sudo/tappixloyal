@@ -107,6 +107,10 @@ func (a *api) businessAnalytics(w http.ResponseWriter, r *http.Request) {
 		}
 		branches = append(branches, map[string]any{"id": id, "name": name, "transactions": transactions, "customers": customers, "revenue": revenue, "averageCheck": averageCheck})
 	}
+	if branchRows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось прочитать показатели филиалов")
+		return
+	}
 
 	var totalRevenue, averageLTV, medianLTV, maximumLTV float64
 	var customersWithPurchases int
@@ -177,6 +181,10 @@ func (a *api) businessAnalytics(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rfmSegments = append(rfmSegments, map[string]any{"code": segment, "name": segmentNames[segment], "churnRisk": risk, "customers": customers, "revenue": revenue, "averageLTV": averageLTV})
+	}
+	if rfmRows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось прочитать RFM")
+		return
 	}
 
 	funnelTypes := []string{"smart_link.opened", "registration.started", "customer.registered", "purchase.first", "purchase.second", "reward.unlocked", "reward.redeemed"}
