@@ -39,6 +39,9 @@ jobs:
         working-directory: apps/api
         run: test -z "$(gofmt -l .)"
 
+      - name: Test frontend
+        run: npm run test:unit
+
       - name: Lint frontend
         run: npm run lint
 
