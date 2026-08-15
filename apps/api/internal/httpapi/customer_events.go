@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -11,11 +12,17 @@ import (
 // appendCustomerEvent is the canonical write path for customer-facing product
 // events. Idempotency makes webhook and operation retries safe.
 func appendCustomerEvent(r *http.Request, tx pgx.Tx, companyID, customerID, eventType, branchID, idempotencyKey string, properties map[string]any) error {
+	return appendCustomerEventCtx(r.Context(), tx, companyID, customerID, eventType, branchID, idempotencyKey, properties)
+}
+
+// appendCustomerEventCtx is the same write path for callers without a request —
+// background workers record customer events too.
+func appendCustomerEventCtx(ctx context.Context, tx pgx.Tx, companyID, customerID, eventType, branchID, idempotencyKey string, properties map[string]any) error {
 	payload, err := json.Marshal(properties)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(r.Context(), `WITH inserted AS (
+	_, err = tx.Exec(ctx, `WITH inserted AS (
 		INSERT INTO customer_events(company_id,customer_id,event_type,branch_id,source,properties,idempotency_key)
 		VALUES($1,$2,$3,nullif($4,'')::uuid,'tappix',$5::jsonb,nullif($6,''))
 		ON CONFLICT(company_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING RETURNING id
