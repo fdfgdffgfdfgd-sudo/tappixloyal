@@ -2,6 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Bell, Send } from "lucide-react";
 import { api } from "@/lib/api";
+import { deliveryStatusLabel } from "@/lib/labels";
 import { SectionShell } from "./section-shell";
 import { Notice } from "./management-shared";
 
@@ -77,7 +78,7 @@ export function NotificationsPage() {
                       x.status === "sent" ? "mail-sent" : "mail-failed"
                     }
                   >
-                    {x.status}
+                    {deliveryStatusLabel(x.status)}
                   </span>
                 </td>
                 <td>{new Date(x.createdAt).toLocaleString("ru-RU")}</td>

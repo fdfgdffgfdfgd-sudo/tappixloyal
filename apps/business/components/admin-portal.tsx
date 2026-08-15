@@ -23,6 +23,7 @@ import {
 import { CompanyProvisioningWizard } from "./company-provisioning-wizard";
 import { csrfHeaders } from "@/lib/csrf";
 import { API_URL as base } from "@/lib/api";
+import { accountStatusLabel, companyStatusLabel, workspaceRoleLabel } from "@/lib/labels";
 type Company = {
   id: string;
   name: string;
@@ -375,7 +376,7 @@ export function AdminPortal() {
                         </small>
                       </div>
                       <b>{c.plan}</b>
-                      <i className={c.status}>{c.status}</i>
+                      <i className={c.status}>{companyStatusLabel(c.status)}</i>
                     </div>
                   ))}
                 </section>
@@ -441,7 +442,7 @@ export function AdminPortal() {
                         <td>{c.customers}</td>
                         <td>{c.plan}</td>
                         <td>
-                          <i className={c.status}>{c.status}</i>
+                          <i className={c.status}>{companyStatusLabel(c.status)}</i>
                         </td>
                         <td>
                           <button onClick={() => setSelected(c)}>
@@ -563,9 +564,9 @@ export function AdminPortal() {
                             <small>{user.email}</small>
                           </td>
                           <td>{user.company}</td>
-                          <td>{user.role}</td>
+                          <td>{workspaceRoleLabel(user.role)}</td>
                           <td>
-                            <i className={user.status}>{user.status}</i>
+                            <i className={user.status}>{accountStatusLabel(user.status)}</i>
                           </td>
                         </tr>
                       ))}
@@ -685,7 +686,7 @@ export function AdminPortal() {
                     <div>
                       <strong>{company.name}</strong>
                       <small>
-                        {company.plan} · {company.status} · {company.customers}{" "}
+                        {company.plan} · {companyStatusLabel(company.status)} · {company.customers}{" "}
                         клиентов
                       </small>
                     </div>
@@ -733,7 +734,7 @@ export function AdminPortal() {
               </span>
               <span>
                 <small>Статус</small>
-                <strong>{selected.status}</strong>
+                <strong>{companyStatusLabel(selected.status)}</strong>
               </span>
             </div>
             <label className="company-plan-select">

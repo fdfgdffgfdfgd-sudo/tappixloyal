@@ -38,3 +38,40 @@ function translate(dictionary: Record<string, string>, value: string | undefined
 export const customerLevelLabel = (value: string | undefined | null) => translate(CUSTOMER_LEVEL, value);
 export const subscriptionStatusLabel = (value: string | undefined | null) => translate(SUBSCRIPTION_STATUS, value);
 export const workspaceRoleLabel = (value: string | undefined | null) => translate(WORKSPACE_ROLE, value);
+
+// Company and account states shown in the platform console. Kept apart because
+// Russian agreement differs: компания активна, пользователь активен.
+const COMPANY_STATUS: Record<string, string> = {
+  active: "Активна",
+  archived: "Скрыта",
+  blocked: "Заблокирована",
+  suspended: "Приостановлена",
+  cancelled: "Отменена",
+};
+
+const ACCOUNT_STATUS: Record<string, string> = {
+  active: "Активен",
+  archived: "Скрыт",
+  blocked: "Заблокирован",
+  invited: "Приглашён",
+  disabled: "Отключён",
+};
+
+export const companyStatusLabel = (value: string | undefined | null) => translate(COMPANY_STATUS, value);
+export const accountStatusLabel = (value: string | undefined | null) => translate(ACCOUNT_STATUS, value);
+
+const DELIVERY_STATUS: Record<string, string> = {
+  sent: "Отправлено",
+  failed: "Ошибка",
+  queued: "В очереди",
+  delivered: "Доставлено",
+};
+
+const FILE_KIND: Record<string, string> = {
+  logo: "Логотип",
+  asset: "Изображение",
+  document: "Документ",
+};
+
+export const deliveryStatusLabel = (value: string | undefined | null) => translate(DELIVERY_STATUS, value);
+export const fileKindLabel = (value: string | undefined | null) => translate(FILE_KIND, value);
