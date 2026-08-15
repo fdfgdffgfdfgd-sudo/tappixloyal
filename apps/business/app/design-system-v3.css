@@ -1,8 +1,8 @@
 :root{
   --ink:#17201c;--ink-soft:#56615b;--canvas:#f4f5f1;--paper:#fff;--paper-soft:#fafbf8;
   --stroke:#dde2dc;--stroke-strong:#c9d0c9;--brand:#5b55e7;--brand-strong:#4841ce;
-  --brand-wash:#efefff;--success:#19724a;--success-wash:#eaf7f0;--warning:#9a6114;
-  --danger:#b43c4c;--radius-sm:10px;--radius:16px;--radius-lg:24px;
+  --brand-wash:#efefff;--success:#19724a;--success-wash:#eaf7f0;
+  --danger:#b43c4c;--radius-sm:10px;--radius:16px;
   --shadow-sm:0 1px 2px rgba(23,32,28,.04);--shadow-md:0 16px 44px rgba(23,32,28,.08);
   --ease:cubic-bezier(.2,.8,.2,1)
 }
