@@ -1,3 +1,13 @@
+// A smoke test, not a capacity test.
+//
+// Rate limiting is per client, and every virtual user here shares one source
+// address, so the whole run counts against a single client's allowance: 120
+// requests a minute per path, 10 for sign-in. Raising VUS past a handful stops
+// measuring the API and starts measuring the limiter — requests are rejected in
+// milliseconds, so latency even looks better.
+//
+// What this does answer: does a normal client get correct, fast responses under
+// steady use. Measuring real capacity needs load generated from many addresses.
 import http from "k6/http";
 import { check, sleep } from "k6";
 

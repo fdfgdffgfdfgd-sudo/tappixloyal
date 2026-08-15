@@ -17,7 +17,7 @@
     "db:verify-backup": "sh infrastructure/scripts/verify-backup.sh",
     "test:integration": "sh infrastructure/scripts/integration-test.sh",
     "test:e2e": "playwright test",
-    "test:load": "docker run --rm --add-host=host.docker.internal:host-gateway -e VUS -e DURATION -e BASE_URL -v \"$PWD/tests/load:/scripts:ro\" grafana/k6:0.57.0 run /scripts/smoke.js",
+    "test:load": "node tests/load/run.js",
     "test:security": "sh infrastructure/scripts/security-test.sh",
     "test:backup": "archive=$(BACKUP_DIR=$(mktemp -d) sh infrastructure/scripts/backup-postgres.sh) && sh infrastructure/scripts/verify-backup.sh \"$archive\"",
     "test:e2e:install": "playwright install chromium",
