@@ -98,6 +98,12 @@ export function SectionShell({
       .catch(() => setUnreachable(true));
   }, []);
   const fullName = identity ? [identity.firstName, identity.lastName].filter(Boolean).join(" ") : "";
+  // The shortcut listener is bound once, so it reads the palette's state here
+  // rather than from a stale closure.
+  const commandOpenRef = useRef(commandOpen);
+  useEffect(() => {
+    commandOpenRef.current = commandOpen;
+  }, [commandOpen]);
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -105,10 +111,11 @@ export function SectionShell({
         setCommandOpen(true);
       }
       if (event.key === "Escape") {
-        setCommandOpen(false);
-        setCommandQuery("");
-        requestAnimationFrame(() => commandTrigger.current?.focus());
         setNavOpen(false);
+        // Only the palette's own Escape may move focus. Restoring it on every
+        // Escape pulled focus to the search button out of whatever dialog the
+        // page had just closed.
+        if (commandOpenRef.current) closeCommand();
       }
     }
     window.addEventListener("keydown", shortcut);
