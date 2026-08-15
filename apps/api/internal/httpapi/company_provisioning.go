@@ -39,7 +39,11 @@ func (a *api) adminPlans(w http.ResponseWriter, r *http.Request) {
 		var price float64
 		if rows.Scan(&code, &name, &price, &currency, &status) == nil {
 			limits := map[string]any{}
-			erows, _ := a.db.Query(r.Context(), `SELECT code,enabled,limit_value FROM plan_entitlements WHERE plan_code=$1 ORDER BY code`, code)
+			erows, err := a.db.Query(r.Context(), `SELECT code,enabled,limit_value FROM plan_entitlements WHERE plan_code=$1 ORDER BY code`, code)
+			if err != nil {
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить лимиты тарифа")
+				return
+			}
 			if erows != nil {
 				for erows.Next() {
 					var key string
