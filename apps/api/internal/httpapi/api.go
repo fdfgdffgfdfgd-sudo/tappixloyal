@@ -316,7 +316,11 @@ func (a *api) dashboard(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	latestVisits := []map[string]any{}
-	visitRows, _ := a.db.Query(r.Context(), `SELECT v.id,c.first_name,c.last_name,b.name,v.points_added,v.created_at FROM visits v JOIN customers c ON c.id=v.customer_id JOIN branches b ON b.id=v.branch_id WHERE v.company_id=$1 ORDER BY v.created_at DESC LIMIT 5`, companyID(r))
+	visitRows, err := a.db.Query(r.Context(), `SELECT v.id,c.first_name,c.last_name,b.name,v.points_added,v.created_at FROM visits v JOIN customers c ON c.id=v.customer_id JOIN branches b ON b.id=v.branch_id WHERE v.company_id=$1 ORDER BY v.created_at DESC LIMIT 5`, companyID(r))
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить последние визиты")
+		return
+	}
 	if visitRows != nil {
 		for visitRows.Next() {
 			var id, first, last, branch string

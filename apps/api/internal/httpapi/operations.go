@@ -189,7 +189,11 @@ func (a *api) getSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	entitlements := map[string]any{}
 	if planCode != "" {
-		entitlementRows, _ := a.db.Query(r.Context(), `SELECT code,enabled,limit_value FROM plan_entitlements WHERE plan_code=$1 ORDER BY code`, planCode)
+		entitlementRows, err := a.db.Query(r.Context(), `SELECT code,enabled,limit_value FROM plan_entitlements WHERE plan_code=$1 ORDER BY code`, planCode)
+		if err != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить лимиты тарифа")
+			return
+		}
 		if entitlementRows != nil {
 			defer entitlementRows.Close()
 			for entitlementRows.Next() {

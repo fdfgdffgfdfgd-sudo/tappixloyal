@@ -62,7 +62,11 @@ func (a *api) adminPlatformAnalytics(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось собрать аналитику платформы")
 		return
 	}
-	companyRows, _ := a.db.Query(r.Context(), `SELECT co.id,co.name,co.slug,count(distinct c.id),count(distinct v.id),count(distinct c.id) FILTER (WHERE c.total_visits>=2),count(distinct c.id) FILTER (WHERE c.total_visits>0 AND NOT EXISTS(SELECT 1 FROM visits recent WHERE recent.customer_id=c.id AND recent.created_at>now()-interval '45 days')) FROM companies co LEFT JOIN customers c ON c.company_id=co.id AND c.deleted_at IS NULL LEFT JOIN visits v ON v.company_id=co.id WHERE co.deleted_at IS NULL GROUP BY co.id ORDER BY count(distinct c.id) DESC`)
+	companyRows, err := a.db.Query(r.Context(), `SELECT co.id,co.name,co.slug,count(distinct c.id),count(distinct v.id),count(distinct c.id) FILTER (WHERE c.total_visits>=2),count(distinct c.id) FILTER (WHERE c.total_visits>0 AND NOT EXISTS(SELECT 1 FROM visits recent WHERE recent.customer_id=c.id AND recent.created_at>now()-interval '45 days')) FROM companies co LEFT JOIN customers c ON c.company_id=co.id AND c.deleted_at IS NULL LEFT JOIN visits v ON v.company_id=co.id WHERE co.deleted_at IS NULL GROUP BY co.id ORDER BY count(distinct c.id) DESC`)
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить аналитику платформы")
+		return
+	}
 	breakdown := []map[string]any{}
 	if companyRows != nil {
 		defer companyRows.Close()

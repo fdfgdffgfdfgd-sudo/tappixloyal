@@ -83,7 +83,11 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 		averageVisits = float64(periodVisits) / float64(active)
 	}
 	top := []map[string]any{}
-	topRows, _ := a.db.Query(r.Context(), `SELECT id,first_name,last_name,total_visits,total_points,level FROM customers WHERE company_id=$1 AND deleted_at IS NULL ORDER BY total_visits DESC,total_points DESC LIMIT 5`, tenant)
+	topRows, err := a.db.Query(r.Context(), `SELECT id,first_name,last_name,total_visits,total_points,level FROM customers WHERE company_id=$1 AND deleted_at IS NULL ORDER BY total_visits DESC,total_points DESC LIMIT 5`, tenant)
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить топ клиентов")
+		return
+	}
 	if topRows != nil {
 		defer topRows.Close()
 		for topRows.Next() {
