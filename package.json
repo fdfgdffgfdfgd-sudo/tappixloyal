@@ -6,7 +6,7 @@
     "build": "npm --workspace @tappix/business run build",
     "lint": "npm --workspace @tappix/business run lint",
     "test:api": "docker run --rm -v \"$PWD/apps/api:/src\" -w /src golang:1.25-alpine sh -lc '/usr/local/go/bin/go test ./...'",
-    "test": "npm run test:api && npm run lint && npm run build && npm run test:integration",
+    "test": "npm run test:api && npm run test:unit && npm run lint && npm run build && npm run test:integration",
     "db:up": "docker compose up -d postgres redis",
     "db:migrate": "sh infrastructure/scripts/migrate.sh",
     "db:seed-guest-engagement": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000016_guest_engagement.up.sql",
@@ -29,7 +29,8 @@
     "db:seed-files": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000010_files_integrations.up.sql",
     "db:seed-rewards": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000011_customer_rewards.up.sql",
     "db:seed-automation": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000012_loyalty_automation.up.sql",
-    "db:seed-campaigns": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000013_campaigns.up.sql"
+    "db:seed-campaigns": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000013_campaigns.up.sql",
+    "test:unit": "npm --workspace @tappix/business run test"
   },
   "workspaces": [
     "apps/*",
