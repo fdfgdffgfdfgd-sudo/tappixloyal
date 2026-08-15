@@ -142,9 +142,15 @@ func (a *api) integrationLocationMappings(w http.ResponseWriter, r *http.Request
 	for rows.Next() {
 		var id, externalID, name, status, branchID, branchName string
 		var updated time.Time
-		if rows.Scan(&id, &externalID, &name, &status, &branchID, &branchName, &updated) == nil {
-			items = append(items, map[string]any{"id": id, "externalLocationId": externalID, "externalLocationName": name, "status": status, "branchId": branchID, "branchName": branchName, "updatedAt": updated})
+		if err := rows.Scan(&id, &externalID, &name, &status, &branchID, &branchName, &updated); err != nil {
+			fail(w, 500, "LOCATION_MAPPINGS_FAILED", "Не удалось загрузить сопоставления филиалов")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "externalLocationId": externalID, "externalLocationName": name, "status": status, "branchId": branchID, "branchName": branchName, "updatedAt": updated})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "LOCATION_MAPPINGS_FAILED", "Не удалось загрузить сопоставления филиалов")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -193,9 +199,15 @@ func (a *api) integrationCustomerLinks(w http.ResponseWriter, r *http.Request) {
 		var id, externalID, phone, linkStatus, method, customerID, customerName, customerPhone string
 		var metadata json.RawMessage
 		var updated time.Time
-		if rows.Scan(&id, &externalID, &phone, &linkStatus, &method, &metadata, &customerID, &customerName, &customerPhone, &updated) == nil {
-			items = append(items, map[string]any{"id": id, "externalCustomerId": externalID, "normalizedPhone": phone, "status": linkStatus, "matchMethod": method, "metadata": metadata, "customerId": customerID, "customerName": strings.TrimSpace(customerName), "customerPhone": customerPhone, "updatedAt": updated})
+		if err := rows.Scan(&id, &externalID, &phone, &linkStatus, &method, &metadata, &customerID, &customerName, &customerPhone, &updated); err != nil {
+			fail(w, 500, "CUSTOMER_LINKS_FAILED", "Не удалось загрузить связи клиентов")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "externalCustomerId": externalID, "normalizedPhone": phone, "status": linkStatus, "matchMethod": method, "metadata": metadata, "customerId": customerID, "customerName": strings.TrimSpace(customerName), "customerPhone": customerPhone, "updatedAt": updated})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "CUSTOMER_LINKS_FAILED", "Не удалось загрузить связи клиентов")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -244,9 +256,15 @@ func (a *api) integrationSyncStatus(w http.ResponseWriter, r *http.Request) {
 		var attempts, maxAttempts int
 		var created time.Time
 		var started, completed *time.Time
-		if rows.Scan(&id, &jobType, &resource, &jobStatus, &attempts, &maxAttempts, &created, &started, &completed, &lastError) == nil {
-			jobs = append(jobs, map[string]any{"id": id, "jobType": jobType, "resource": resource, "status": jobStatus, "attempts": attempts, "maxAttempts": maxAttempts, "createdAt": created, "startedAt": started, "completedAt": completed, "lastError": lastError})
+		if err := rows.Scan(&id, &jobType, &resource, &jobStatus, &attempts, &maxAttempts, &created, &started, &completed, &lastError); err != nil {
+			fail(w, 500, "SYNC_STATUS_FAILED", "Не удалось загрузить состояние синхронизации")
+			return
 		}
+		jobs = append(jobs, map[string]any{"id": id, "jobType": jobType, "resource": resource, "status": jobStatus, "attempts": attempts, "maxAttempts": maxAttempts, "createdAt": created, "startedAt": started, "completedAt": completed, "lastError": lastError})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "SYNC_STATUS_FAILED", "Не удалось загрузить состояние синхронизации")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"connectionId": r.PathValue("id"), "provider": provider, "status": status, "lastSyncAt": lastSync, "jobs": jobs}})
 }
@@ -265,9 +283,15 @@ func (a *api) integrationReconciliations(w http.ResponseWriter, r *http.Request)
 		var rangeStart, rangeEnd, created time.Time
 		var completed *time.Time
 		var providerCount, localCount, missingCount, mismatchCount, repairedCount int
-		if rows.Scan(&id, &resource, &status, &rangeStart, &rangeEnd, &providerCount, &localCount, &missingCount, &mismatchCount, &repairedCount, &lastError, &created, &completed) == nil {
-			items = append(items, map[string]any{"id": id, "resource": resource, "status": status, "rangeStart": rangeStart, "rangeEnd": rangeEnd, "providerCount": providerCount, "localCount": localCount, "missingCount": missingCount, "mismatchCount": mismatchCount, "repairedCount": repairedCount, "lastError": lastError, "createdAt": created, "completedAt": completed})
+		if err := rows.Scan(&id, &resource, &status, &rangeStart, &rangeEnd, &providerCount, &localCount, &missingCount, &mismatchCount, &repairedCount, &lastError, &created, &completed); err != nil {
+			fail(w, 500, "RECONCILIATIONS_FAILED", "Не удалось загрузить историю сверок")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "resource": resource, "status": status, "rangeStart": rangeStart, "rangeEnd": rangeEnd, "providerCount": providerCount, "localCount": localCount, "missingCount": missingCount, "mismatchCount": mismatchCount, "repairedCount": repairedCount, "lastError": lastError, "createdAt": created, "completedAt": completed})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "RECONCILIATIONS_FAILED", "Не удалось загрузить историю сверок")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

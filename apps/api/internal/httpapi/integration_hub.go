@@ -108,6 +108,10 @@ func (a *api) listIntegrationConnections(w http.ResponseWriter, r *http.Request)
 		}
 		items = append(items, map[string]any{"id": id, "provider": provider, "name": name, "status": status, "authType": authType, "externalAccountId": account, "capabilities": capabilities, "lastConnectedAt": connectedAt, "lastSyncAt": syncAt, "lastErrorCode": errorCode, "lastErrorMessage": errorMessage, "createdAt": createdAt})
 	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось прочитать подключения")
+		return
+	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
 
@@ -345,6 +349,10 @@ func (a *api) listWebhookDeliveries(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{"id": id, "endpoint": endpoint, "eventType": eventType, "eventId": eventID, "direction": direction, "status": status, "responseStatus": responseStatus, "attempts": attempts, "nextAttemptAt": nextAttempt, "processedAt": processedAt, "lastError": lastError, "createdAt": createdAt})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось прочитать журнал webhook")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

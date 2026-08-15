@@ -44,9 +44,17 @@ func (a *api) adminCompanyDetail(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var code string
-			if rows.Scan(&code) == nil {
-				subscription.Modules = append(subscription.Modules, code)
+			if err := rows.Scan(&code); err != nil {
+				rows.Close()
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить модули компании")
+				return
 			}
+			subscription.Modules = append(subscription.Modules, code)
+		}
+		rows.Close()
+		if rows.Err() != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить модули компании")
+			return
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"id": id, "name": name, "slug": slug, "status": status, "subscription": subscription}})

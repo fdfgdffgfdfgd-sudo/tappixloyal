@@ -37,26 +37,39 @@ func (a *api) adminPlans(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var code, name, currency, status string
 		var price float64
-		if rows.Scan(&code, &name, &price, &currency, &status) == nil {
-			limits := map[string]any{}
-			erows, err := a.db.Query(r.Context(), `SELECT code,enabled,limit_value FROM plan_entitlements WHERE plan_code=$1 ORDER BY code`, code)
-			if err != nil {
+		if err := rows.Scan(&code, &name, &price, &currency, &status); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить тарифы")
+			return
+		}
+		limits := map[string]any{}
+		erows, err := a.db.Query(r.Context(), `SELECT code,enabled,limit_value FROM plan_entitlements WHERE plan_code=$1 ORDER BY code`, code)
+		if err != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить лимиты тарифа")
+			return
+		}
+		if erows != nil {
+			for erows.Next() {
+				var key string
+				var enabled bool
+				var limit *int
+				if err := erows.Scan(&key, &enabled, &limit); err != nil {
+					erows.Close()
+					fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить лимиты тарифа")
+					return
+				}
+				limits[key] = map[string]any{"enabled": enabled, "limit": limit}
+			}
+			erows.Close()
+			if erows.Err() != nil {
 				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить лимиты тарифа")
 				return
 			}
-			if erows != nil {
-				for erows.Next() {
-					var key string
-					var enabled bool
-					var limit *int
-					if erows.Scan(&key, &enabled, &limit) == nil {
-						limits[key] = map[string]any{"enabled": enabled, "limit": limit}
-					}
-				}
-				erows.Close()
-			}
-			items = append(items, map[string]any{"code": code, "name": name, "monthlyPrice": price, "currency": currency, "status": status, "entitlements": limits})
 		}
+		items = append(items, map[string]any{"code": code, "name": name, "monthlyPrice": price, "currency": currency, "status": status, "entitlements": limits})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить тарифы")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

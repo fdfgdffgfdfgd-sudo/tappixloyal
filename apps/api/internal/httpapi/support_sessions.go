@@ -55,9 +55,15 @@ func (a *api) listSupportSessions(w http.ResponseWriter, r *http.Request) {
 		var id, cid, name, reason string
 		var expires, created time.Time
 		var revoked *time.Time
-		if rows.Scan(&id, &cid, &name, &reason, &expires, &revoked, &created) == nil {
-			items = append(items, map[string]any{"id": id, "companyId": cid, "company": name, "reason": reason, "expiresAt": expires, "revokedAt": revoked, "createdAt": created, "active": revoked == nil && expires.After(time.Now())})
+		if err := rows.Scan(&id, &cid, &name, &reason, &expires, &revoked, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить сессии поддержки")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "companyId": cid, "company": name, "reason": reason, "expiresAt": expires, "revokedAt": revoked, "createdAt": created, "active": revoked == nil && expires.After(time.Now())})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить сессии поддержки")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

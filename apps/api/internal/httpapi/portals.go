@@ -288,9 +288,15 @@ func (a *api) customerHistory(w http.ResponseWriter, r *http.Request) {
 		var operation, description string
 		var amount, balance int
 		var created time.Time
-		if rows.Scan(&operation, &amount, &balance, &description, &created) == nil {
-			items = append(items, map[string]any{"operation": operation, "amount": amount, "balanceAfter": balance, "description": description, "createdAt": created})
+		if err := rows.Scan(&operation, &amount, &balance, &description, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить историю")
+			return
 		}
+		items = append(items, map[string]any{"operation": operation, "amount": amount, "balanceAfter": balance, "description": description, "createdAt": created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить историю")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -317,9 +323,15 @@ func (a *api) adminCompanies(w http.ResponseWriter, r *http.Request) {
 		var id, name, slug, status, plan string
 		var created time.Time
 		var customers int
-		if rows.Scan(&id, &name, &slug, &status, &created, &customers, &plan) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "slug": slug, "status": status, "createdAt": created, "customers": customers, "plan": plan})
+		if err := rows.Scan(&id, &name, &slug, &status, &created, &customers, &plan); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить компании")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "name": name, "slug": slug, "status": status, "createdAt": created, "customers": customers, "plan": plan})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить компании")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

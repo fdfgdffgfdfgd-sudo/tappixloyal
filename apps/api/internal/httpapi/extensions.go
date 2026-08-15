@@ -102,9 +102,17 @@ func (a *api) publicWebsite(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var id, n, address string
-			if rows.Scan(&id, &n, &address) == nil {
-				branches = append(branches, map[string]string{"id": id, "name": n, "address": address})
+			if err := rows.Scan(&id, &n, &address); err != nil {
+				rows.Close()
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить филиалы")
+				return
 			}
+			branches = append(branches, map[string]string{"id": id, "name": n, "address": address})
+		}
+		rows.Close()
+		if rows.Err() != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить филиалы")
+			return
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"company": name, "headline": headline, "description": description, "services": services, "contacts": contacts, "branches": branches}})
@@ -142,9 +150,15 @@ func (a *api) listBookings(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, name, phone, service, status, comment, branch string
 		var starts time.Time
-		if rows.Scan(&id, &name, &phone, &service, &starts, &status, &comment, &branch) == nil {
-			items = append(items, map[string]any{"id": id, "customerName": name, "phone": phone, "service": service, "startsAt": starts, "status": status, "comment": comment, "branch": branch})
+		if err := rows.Scan(&id, &name, &phone, &service, &starts, &status, &comment, &branch); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить записи")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "customerName": name, "phone": phone, "service": service, "startsAt": starts, "status": status, "comment": comment, "branch": branch})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить записи")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -178,9 +192,15 @@ func (a *api) listAPIKeys(w http.ResponseWriter, r *http.Request) {
 		var sandbox bool
 		var last, expires, revoked *time.Time
 		var created time.Time
-		if rows.Scan(&id, &name, &prefix, &scopes, &sandbox, &last, &expires, &revoked, &created) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "prefix": prefix, "scopes": scopes, "sandbox": sandbox, "lastUsedAt": last, "expiresAt": expires, "revokedAt": revoked, "createdAt": created, "active": revoked == nil && (expires == nil || expires.After(time.Now()))})
+		if err := rows.Scan(&id, &name, &prefix, &scopes, &sandbox, &last, &expires, &revoked, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить API-ключи")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "name": name, "prefix": prefix, "scopes": scopes, "sandbox": sandbox, "lastUsedAt": last, "expiresAt": expires, "revokedAt": revoked, "createdAt": created, "active": revoked == nil && (expires == nil || expires.After(time.Now()))})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить API-ключи")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

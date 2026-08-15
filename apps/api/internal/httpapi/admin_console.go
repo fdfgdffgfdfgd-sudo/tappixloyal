@@ -41,9 +41,15 @@ func (a *api) adminUsers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, first, last, email, role, status, company string
 		var created time.Time
-		if rows.Scan(&id, &first, &last, &email, &role, &status, &company, &created) == nil {
-			items = append(items, map[string]any{"id": id, "firstName": first, "lastName": last, "email": email, "role": role, "status": status, "company": company, "createdAt": created})
+		if err := rows.Scan(&id, &first, &last, &email, &role, &status, &company, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить пользователей")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "firstName": first, "lastName": last, "email": email, "role": role, "status": status, "company": company, "createdAt": created})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить пользователей")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }
@@ -73,9 +79,17 @@ func (a *api) adminPlatformAnalytics(w http.ResponseWriter, r *http.Request) {
 		for companyRows.Next() {
 			var id, name, slug string
 			var customerCount, visitCount, returningCount, riskCount int
-			if companyRows.Scan(&id, &name, &slug, &customerCount, &visitCount, &returningCount, &riskCount) == nil {
-				breakdown = append(breakdown, map[string]any{"id": id, "name": name, "slug": slug, "customers": customerCount, "visits": visitCount, "returning": returningCount, "atRisk": riskCount})
+			if err := companyRows.Scan(&id, &name, &slug, &customerCount, &visitCount, &returningCount, &riskCount); err != nil {
+				companyRows.Close()
+				fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить аналитику платформы")
+				return
 			}
+			breakdown = append(breakdown, map[string]any{"id": id, "name": name, "slug": slug, "customers": customerCount, "visits": visitCount, "returning": returningCount, "atRisk": riskCount})
+		}
+		companyRows.Close()
+		if companyRows.Err() != nil {
+			fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить аналитику платформы")
+			return
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"companies": companies, "customers": customers, "visits": visits, "frequent": frequent, "loyal": loyal, "atRisk": atRisk, "newThisMonth": newMonth, "retentionRate": percent(frequent, customers), "averageVisits": average(visits, customers), "companyBreakdown": breakdown}})
@@ -108,20 +122,26 @@ func (a *api) adminCustomers(w http.ResponseWriter, r *http.Request) {
 		var points, visits int
 		var created time.Time
 		var lastVisit *time.Time
-		if rows.Scan(&id, &companyID, &company, &first, &last, &phone, &points, &visits, &level, &created, &lastVisit) == nil {
-			segment := "Новый"
-			if visits >= 10 {
-				segment = "Постоянный"
-			} else if visits >= 5 {
-				segment = "Частый"
-			} else if visits >= 2 {
-				segment = "Возвращается"
-			}
-			if visits > 0 && (lastVisit == nil || lastVisit.Before(time.Now().AddDate(0, 0, -45))) {
-				segment = "Риск ухода"
-			}
-			items = append(items, map[string]any{"id": id, "companyId": companyID, "company": company, "firstName": first, "lastName": last, "phone": phone, "points": points, "visits": visits, "level": level, "segment": segment, "createdAt": created, "lastVisitAt": lastVisit})
+		if err := rows.Scan(&id, &companyID, &company, &first, &last, &phone, &points, &visits, &level, &created, &lastVisit); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить клиентов платформы")
+			return
 		}
+		segment := "Новый"
+		if visits >= 10 {
+			segment = "Постоянный"
+		} else if visits >= 5 {
+			segment = "Частый"
+		} else if visits >= 2 {
+			segment = "Возвращается"
+		}
+		if visits > 0 && (lastVisit == nil || lastVisit.Before(time.Now().AddDate(0, 0, -45))) {
+			segment = "Риск ухода"
+		}
+		items = append(items, map[string]any{"id": id, "companyId": companyID, "company": company, "firstName": first, "lastName": last, "phone": phone, "points": points, "visits": visits, "level": level, "segment": segment, "createdAt": created, "lastVisitAt": lastVisit})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить клиентов платформы")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

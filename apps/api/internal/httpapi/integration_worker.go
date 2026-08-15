@@ -77,6 +77,9 @@ func fanoutOutbox(ctx context.Context, db *pgxpool.Pool) error {
 		events = append(events, item)
 	}
 	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
 	for _, item := range events {
 		_, err = tx.Exec(ctx, `INSERT INTO webhook_deliveries(company_id,endpoint_id,outbox_event_id,event_type,event_id,direction,payload)
 			SELECT $1,id,$2,$3,$2::text,'outbound',$4 FROM webhook_endpoints

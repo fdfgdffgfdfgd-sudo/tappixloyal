@@ -127,8 +127,9 @@ func (a *api) getLoyaltyRules(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var event string
 		var action map[string]any
-		if rows.Scan(&event, &action) != nil {
-			continue
+		if err := rows.Scan(&event, &action); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить правила лояльности")
+			return
 		}
 		amount, _ := action["amount"].(float64)
 		switch event {
@@ -143,6 +144,10 @@ func (a *api) getLoyaltyRules(w http.ResponseWriter, r *http.Request) {
 			result.VisitsForReward = int(visits)
 			result.RewardName, _ = action["rewardName"].(string)
 		}
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить правила лояльности")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: result})
 }

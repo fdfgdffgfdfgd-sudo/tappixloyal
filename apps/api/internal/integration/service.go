@@ -416,6 +416,9 @@ func reverseReferralQualification(ctx context.Context, tx pgx.Tx, companyID, ori
 		rewards = append(rewards, item)
 	}
 	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
 	for _, item := range rewards {
 		unrecovered := 0
 		if item.status == "issued" && item.amount > 0 {
@@ -475,6 +478,9 @@ func restoreBonusLots(ctx context.Context, tx pgx.Tx, companyID, customerID, ori
 		items = append(items, item)
 	}
 	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
 	left := amount
 	for _, item := range items {
 		if left == 0 {
@@ -649,6 +655,9 @@ func ConsumeBonusLots(ctx context.Context, tx pgx.Tx, companyID, customerID, deb
 		lots = append(lots, item)
 	}
 	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
 	left := amount
 	for _, item := range lots {
 		if left == 0 {

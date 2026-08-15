@@ -109,9 +109,15 @@ func (a *api) listFiles(w http.ResponseWriter, r *http.Request) {
 		var id, kind, name, contentType string
 		var size int64
 		var created time.Time
-		if rows.Scan(&id, &kind, &name, &contentType, &size, &created) == nil {
-			items = append(items, map[string]any{"id": id, "kind": kind, "name": name, "contentType": contentType, "size": size, "createdAt": created, "url": "/api/v1/public/files/" + id})
+		if err := rows.Scan(&id, &kind, &name, &contentType, &size, &created); err != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить файлы")
+			return
 		}
+		items = append(items, map[string]any{"id": id, "kind": kind, "name": name, "contentType": contentType, "size": size, "createdAt": created, "url": "/api/v1/public/files/" + id})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить файлы")
+		return
 	}
 	write(w, 200, envelope{Success: true, Data: items})
 }

@@ -29,9 +29,17 @@ func (a *api) branchDetail(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var employeeID, first, last, email, status string
 			var lastLogin *time.Time
-			if rows.Scan(&employeeID, &first, &last, &email, &status, &lastLogin) == nil {
-				employees = append(employees, map[string]any{"id": employeeID, "firstName": first, "lastName": last, "email": email, "status": status, "lastLoginAt": lastLogin})
+			if err := rows.Scan(&employeeID, &first, &last, &email, &status, &lastLogin); err != nil {
+				rows.Close()
+				fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить филиал")
+				return
 			}
+			employees = append(employees, map[string]any{"id": employeeID, "firstName": first, "lastName": last, "email": email, "status": status, "lastLoginAt": lastLogin})
+		}
+		rows.Close()
+		if rows.Err() != nil {
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить филиал")
+			return
 		}
 	}
 	devices := []map[string]any{}
@@ -43,9 +51,17 @@ func (a *api) branchDetail(w http.ResponseWriter, r *http.Request) {
 			var enabled bool
 			var scans int64
 			var lastScan *time.Time
-			if deviceRows.Scan(&deviceID, &kind, &deviceName, &token, &destination, &enabled, &scans, &lastScan) == nil {
-				devices = append(devices, map[string]any{"id": deviceID, "kind": kind, "name": deviceName, "token": token, "destination": destination, "active": enabled, "scans": scans, "lastScannedAt": lastScan})
+			if err := deviceRows.Scan(&deviceID, &kind, &deviceName, &token, &destination, &enabled, &scans, &lastScan); err != nil {
+				deviceRows.Close()
+				fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить филиал")
+				return
 			}
+			devices = append(devices, map[string]any{"id": deviceID, "kind": kind, "name": deviceName, "token": token, "destination": destination, "active": enabled, "scans": scans, "lastScannedAt": lastScan})
+		}
+		if deviceRows.Err() != nil {
+			deviceRows.Close()
+			fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить филиал")
+			return
 		}
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{"id": id, "name": name, "address": address, "phone": phone, "active": active, "stats": map[string]int{"visits30Days": visits, "uniqueCustomers30Days": customers, "points30Days": points}, "employees": employees, "devices": devices}})

@@ -59,9 +59,15 @@ func refreshAllAnalytics(ctx context.Context, db *pgxpool.Pool) {
 	companies := []string{}
 	for rows.Next() {
 		var id string
-		if rows.Scan(&id) == nil {
-			companies = append(companies, id)
+		if scanErr := rows.Scan(&id); scanErr != nil {
+			slog.Error("daily analytics projection could not read the company list", "error", scanErr)
+			return
 		}
+		companies = append(companies, id)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		slog.Error("daily analytics projection read a partial company list", "error", rowsErr)
+		return
 	}
 	for _, companyID := range companies {
 		if err = refreshAnalyticsCompany(ctx, db, companyID); err != nil {
