@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Gift } from "lucide-react";
-const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
+import { API_URL as base } from "@/lib/api";
 
 export default function ReferralPage({ params }: { params: Promise<{ code: string }> }) {
   const [message, setMessage] = useState("Открываем приглашение…");

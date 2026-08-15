@@ -1,5 +1,34 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { OFFLINE_MESSAGE, api } from "./api";
+import { OFFLINE_MESSAGE, api, assetUrlFrom } from "./api";
+
+describe("assetUrlFrom", () => {
+  // Uploaded files come back as absolute paths under /api/v1.
+  const file = "/api/v1/public/files/abc";
+
+  test("leaves the path alone when the API shares the origin", () => {
+    // Production: nginx proxies /api/ to the API, so the path already resolves.
+    expect(assetUrlFrom("/api/v1", file)).toBe(file);
+  });
+
+  test("puts the API origin in front when the API lives elsewhere", () => {
+    // Development: the panel runs on :3000 and the API on :8080.
+    expect(assetUrlFrom("http://localhost:8080/api/v1", file)).toBe(
+      "http://localhost:8080/api/v1/public/files/abc",
+    );
+  });
+
+  test("uses the origin only, not the base path", () => {
+    expect(assetUrlFrom("https://api.tappix.kz/api/v1", file)).toBe(
+      "https://api.tappix.kz/api/v1/public/files/abc",
+    );
+  });
+
+  test("does not depend on which port the panel itself is served from", () => {
+    // The previous implementation keyed off window.location.port === "3000",
+    // so serving the panel on that port in production broke every file link.
+    expect(assetUrlFrom("/api/v1", file)).not.toContain("localhost");
+  });
+});
 
 function jsonResponse(body: unknown, status = 200) {
   // `ok` matters: the refresh retry is gated on it.

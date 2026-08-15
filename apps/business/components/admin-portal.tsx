@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { CompanyProvisioningWizard } from "./company-provisioning-wizard";
 import { csrfHeaders } from "@/lib/csrf";
-const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
+import { API_URL as base } from "@/lib/api";
 type Company = {
   id: string;
   name: string;

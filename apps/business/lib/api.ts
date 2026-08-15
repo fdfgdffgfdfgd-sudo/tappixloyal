@@ -1,6 +1,22 @@
 import { csrfHeaders } from "./csrf";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
+// Single source for where the API lives. Behind the production proxy this is a
+// relative path; in development it names the API origin explicitly.
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
+
+// Uploaded files come back as absolute paths under /api/v1. They resolve as they
+// are when the API shares the origin, and need the API origin in front when it
+// does not. Derived from API_URL rather than from the port the panel happens to
+// be served on.
+export function assetUrlFrom(base: string, path: string) {
+  try {
+    return new URL(base).origin + path;
+  } catch {
+    return path;
+  }
+}
+
+export const assetUrl = (path: string) => assetUrlFrom(API_URL, path);
 
 export const OFFLINE_MESSAGE="Нет связи с сервером. Проверьте подключение и повторите.";
 
