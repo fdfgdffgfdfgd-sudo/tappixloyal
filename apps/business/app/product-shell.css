@@ -1,4 +1,4 @@
-:root { --product-bg:#f6f7f9; --product-surface:#fff; --product-text:#111827; --product-muted:#566175; --product-border:#e5e7eb; --product-accent:#2563eb; }
+:root { --product-bg:#f6f7f9; --product-text:#111827; --product-muted:#566175; --product-border:#e5e7eb; --product-accent:#2563eb; }
 .product-shell { min-height:100dvh; background:var(--product-bg); display:grid; grid-template-columns:248px minmax(0,1fr); color:var(--product-text); }
 .product-sidebar { position:sticky; top:0; height:100dvh; padding:16px 12px; background:#0d1117; color:#fff; display:flex; flex-direction:column; z-index:30; }
 .workspace-control { position:relative; }

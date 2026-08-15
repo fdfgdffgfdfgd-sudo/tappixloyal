@@ -11,8 +11,14 @@ if (!fs.existsSync(before) || !fs.existsSync(after)) {
   process.exit(1);
 }
 
+// These screens render timestamps and rows created by the run itself, so two
+// captures of the same build differ. Verified by comparing a build against
+// itself. They are reported, but they cannot prove or disprove a change.
+const VOLATILE = ["_reports.png", "_risk-center.png", "_analytics.png"];
+
 let identical = 0;
 const changed = [];
+const volatile = [];
 const missing = [];
 
 for (const project of fs.readdirSync(before)) {
@@ -24,6 +30,7 @@ for (const project of fs.readdirSync(before)) {
       continue;
     }
     if (fs.readFileSync(a).equals(fs.readFileSync(b))) identical++;
+    else if (VOLATILE.includes(file)) volatile.push(`${project}/${file}`);
     else changed.push(`${project}/${file}`);
   }
 }
@@ -31,6 +38,10 @@ for (const project of fs.readdirSync(before)) {
 console.log(`идентичных: ${identical}`);
 console.log(`отличаются: ${changed.length}`);
 changed.forEach(f => console.log(`    ${f}`));
+if (volatile.length) {
+  console.log(`нестабильные по своей природе (не сигнал): ${volatile.length}`);
+  volatile.forEach(f => console.log(`    ${f}`));
+}
 if (missing.length) {
   console.log(`отсутствуют во втором прогоне: ${missing.length}`);
   missing.forEach(f => console.log(`    ${f}`));
