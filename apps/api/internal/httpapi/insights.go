@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -121,7 +120,7 @@ func (a *api) auditMutations(next http.Handler) http.Handler {
 			company = claims.CompanyID
 		}
 		requestID := w.Header().Get("X-Request-ID")
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		host := clientIP(r)
 		// Guest identities are customer UUIDs, not user UUIDs. Preserve the
 		// tenant-scoped request audit without violating the users FK or
 		// misrepresenting a customer as a staff actor.
