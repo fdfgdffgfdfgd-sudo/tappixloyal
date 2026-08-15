@@ -171,7 +171,13 @@ func (a *api) getSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	planCode := normalizePlanCode(plan)
 	modules := []string{}
-	rows, _ := a.db.Query(r.Context(), `SELECT module_code FROM company_modules WHERE company_id=$1 AND enabled ORDER BY module_code`, companyID(r))
+	// An empty list reads as "nothing is enabled", so a failed query would hide
+	// features the company pays for.
+	rows, err := a.db.Query(r.Context(), `SELECT module_code FROM company_modules WHERE company_id=$1 AND enabled ORDER BY module_code`, companyID(r))
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить подключённые модули")
+		return
+	}
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {

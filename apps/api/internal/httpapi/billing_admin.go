@@ -35,7 +35,11 @@ func (a *api) adminCompanyDetail(w http.ResponseWriter, r *http.Request) {
 	if periodEnd != nil {
 		subscription.PeriodEndsAt = periodEnd.Format("2006-01-02")
 	}
-	rows, _ := a.db.Query(r.Context(), `SELECT module_code FROM company_modules WHERE company_id=$1 AND enabled ORDER BY module_code`, id)
+	rows, err := a.db.Query(r.Context(), `SELECT module_code FROM company_modules WHERE company_id=$1 AND enabled ORDER BY module_code`, id)
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить модули компании")
+		return
+	}
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
