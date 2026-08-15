@@ -92,7 +92,11 @@ func (a *api) publicWebsite(w http.ResponseWriter, r *http.Request) {
 	if services == nil {
 		services = []string{}
 	}
-	rows, _ := a.db.Query(r.Context(), `SELECT id,name,address FROM branches WHERE company_id=$1 AND is_active AND deleted_at IS NULL ORDER BY name`, companyID)
+	rows, err := a.db.Query(r.Context(), `SELECT id,name,address FROM branches WHERE company_id=$1 AND is_active AND deleted_at IS NULL ORDER BY name`, companyID)
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить филиалы")
+		return
+	}
 	branches := []map[string]string{}
 	if rows != nil {
 		defer rows.Close()

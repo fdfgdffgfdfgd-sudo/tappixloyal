@@ -299,7 +299,11 @@ func (a *api) dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	latestCustomers := []map[string]any{}
-	rows, _ := a.db.Query(r.Context(), `SELECT id,first_name,last_name,phone,total_points,created_at FROM customers WHERE company_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 5`, companyID(r))
+	rows, err := a.db.Query(r.Context(), `SELECT id,first_name,last_name,phone,total_points,created_at FROM customers WHERE company_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 5`, companyID(r))
+	if err != nil {
+		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить последних клиентов")
+		return
+	}
 	if rows != nil {
 		for rows.Next() {
 			var id, first, last, phone string
