@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -154,7 +155,7 @@ export function SectionShell({
     <div className="product-shell">
       <a className="skip" href="#main-content">К содержанию</a>
       <aside className={`product-sidebar ${navOpen ? "is-open" : ""}`}>
-        <div className="product-brand"><span>T</span><strong>Tappix</strong><button aria-label="Закрыть меню" onClick={() => setNavOpen(false)}><X/></button></div>
+        <div className="product-brand"><Image className="product-mark" src="/tappix-mark.png" alt="" aria-hidden width={30} height={30} priority/><strong>Tappix</strong><button aria-label="Закрыть меню" onClick={() => setNavOpen(false)}><X/></button></div>
         <div className="workspace-control">
           <button
             aria-expanded={menuOpen}
