@@ -18,7 +18,7 @@ const templates:Record<Industry,{name:string;description:string;icon:typeof Coff
  clinic:{name:"Повторный приём",description:"Мягкое возвращение без агрессивных скидок",icon:HeartPulse,values:{welcomeBonus:100,pointsPerVisit:200,birthdayBonus:300,visitsForReward:4,rewardName:"Консультация специалиста"}},
  retail:{name:"Cashback и VIP",description:"Повторные покупки и рост ценности клиента",icon:ShoppingBag,values:{welcomeBonus:200,pointsPerVisit:100,birthdayBonus:500,visitsForReward:5,rewardName:"VIP-подарок"}},
 };
-const initial:Draft={industry:"coffee",goal:"repeat",template:"Каждый восьмой кофе",welcomeBonus:20,pointsPerVisit:1,birthdayBonus:50,visitsForReward:8,rewardName:"Кофе в подарок",primaryColor:"#5b55e7",welcomeTitle:"Добро пожаловать!",welcomeText:"Копите бонусы за каждый визит и получайте подарки.",branchId:"",branchName:"Основной филиал",branchAddress:"",touchpointName:"QR у кассы"};
+const initial:Draft={industry:"coffee",goal:"repeat",template:"Каждый восьмой кофе",welcomeBonus:20,pointsPerVisit:1,birthdayBonus:50,visitsForReward:8,rewardName:"Кофе в подарок",primaryColor:"#6352ee",welcomeTitle:"Добро пожаловать!",welcomeText:"Копите бонусы за каждый визит и получайте подарки.",branchId:"",branchName:"Основной филиал",branchAddress:"",touchpointName:"QR у кассы"};
 const industryLabels:Record<Industry,string>={coffee:"Кофейня",salon:"Салон",restaurant:"Ресторан",autoservice:"Автосервис",clinic:"Клиника",retail:"Retail"};
 const goalLabels:Record<Goal,string>={repeat:"Повторные визиты",average:"Средний чек",database:"Сбор базы",referrals:"Рекомендации"};
 

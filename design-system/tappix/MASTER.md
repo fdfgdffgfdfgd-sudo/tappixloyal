@@ -19,7 +19,7 @@
   --surface: #ffffff;
   --surface-subtle: #f1f5f9;
   --text: #0f172a;
-  --text-muted: #64748b;
+  --text-muted: #5f6f86;
   --border: #e2e8f0;
   --accent: #6352ee;
   --accent-hover: #5140da;
@@ -33,6 +33,8 @@
   --focus: #6352ee;
 }
 ```
+
+`--text-muted` — `#5f6f86`, а не более светлый `#64748b`: на `--surface-subtle` тот давал 4.34:1 и нарушал требование AA 4.5:1 из раздела Accessibility. Реализация токенов живёт в `apps/business/app/tokens.css` и является единственным `:root` приложения.
 
 Branding клиента разрешено только через валидируемый accent/logo/cover. Arbitrary CSS запрещён. Контраст текста проверяется автоматически; при небезопасном brand color используется системный fallback.
 

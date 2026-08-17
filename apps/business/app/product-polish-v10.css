@@ -38,7 +38,7 @@ body .shell>main{margin-left:256px}
 .integration-catalog article.planned b{padding:5px 8px;border-radius:7px;background:#eef2f6;color:#566175;font-size:10px}
 
 .risk-explainer{margin-bottom:16px;padding:18px 20px;border:1px solid #ddd8ff;border-radius:14px;background:#f7f5ff;display:flex;align-items:flex-start;gap:14px}
-.risk-explainer>span{width:42px;height:42px;border-radius:11px;background:#e9e5ff;color:#5b4bce;display:grid;place-items:center;flex:none}
+.risk-explainer>span{width:42px;height:42px;border-radius:11px;background:#e9e5ff;color:var(--accent);display:grid;place-items:center;flex:none}
 .risk-explainer svg{width:20px}
 .risk-explainer h2{margin:0 0 5px;font-size:16px}
 .risk-explainer p{max-width:850px;margin:0;color:#526078;line-height:1.55}

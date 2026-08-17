@@ -45,6 +45,9 @@ jobs:
       - name: Lint frontend
         run: npm run lint
 
+      - name: Check design tokens
+        run: npm run test:tokens
+
       - name: Build frontend
         run: npm run build
 
