@@ -92,15 +92,34 @@ function ratio(a, b) {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 }
+function hex(value) {
+  if (!value) return null;
+  let v = value.trim();
+  for (let depth = 0; depth < 8; depth += 1) {
+    const ref = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(v);
+    if (!ref) break;
+    v = (declared.get(ref[1]) || "").trim();
+  }
+  v = v.replace(/\s*!important\s*$/i, "").trim();
+  return /^#[0-9a-f]{3}$|^#[0-9a-f]{6}$/i.test(v) ? v : null;
+}
+
 for (const [fg, bg] of CONTRAST_PAIRS) {
-  const a = declared.get(fg);
-  const b = declared.get(bg);
-  if (!a || !b || !/^#[0-9a-f]{3,8}$/i.test(a) || !/^#[0-9a-f]{3,8}$/i.test(b)) continue;
+  const a = hex(`var(${fg})`);
+  const b = hex(`var(${bg})`);
+  if (!a || !b) continue;
   const value = ratio(a, b);
   if (value < AA) {
     problems.push(`контраст ${fg} на ${bg} = ${value.toFixed(2)}:1, требуется ${AA}:1 (MASTER.md, Accessibility).`);
   }
 }
+
+// Контраст реально отрисованных сочетаний здесь не проверяется намеренно.
+// Статически не видно ни каскада, ни того, содержит ли элемент текст или иконку,
+// поэтому такая проверка даёт десятки ложных срабатываний на перебитых правилах.
+// Это делает axe в tests/e2e/accessibility.spec.ts — на живых страницах, с
+// настоящим каскадом и правильным порогом для графики. Именно он поймал
+// регрессию, которую пары токенов выше пропустили.
 
 if (problems.length > 0) {
   console.error("Проверка токенов оформления не пройдена:\n");
