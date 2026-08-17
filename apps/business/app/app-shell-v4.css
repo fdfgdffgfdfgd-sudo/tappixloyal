@@ -1,15 +1,3 @@
-:root{
-  --app-bg:#f8fafc;--app-surface:#fff;--app-surface-muted:#f1f5f9;
-  --app-text:#0f172a;--app-text-muted:#566175;--app-border:#e2e8f0;
-  --app-accent:#6558d9;--app-accent-soft:#eeecff;
-  --app-success:#15803d;--app-warning:#a16207;--app-danger:#b42335;--app-radius-md:14px;
-  --app-shadow:0 1px 2px rgba(15,23,42,.04);--app-focus:0 0 0 3px rgba(101,88,217,.2);
-  --app-fast:180ms ease;
-  --canvas:var(--app-bg);--paper:var(--app-surface);--paper-soft:var(--app-surface-muted);
-  --ink:var(--app-text);--ink-soft:var(--app-text-muted);--stroke:var(--app-border);
-  --brand:var(--app-accent);--brand-wash:var(--app-accent-soft);--radius:var(--app-radius-md);
-  --shadow-sm:var(--app-shadow);
-}
 body{background:var(--app-bg);color:var(--app-text)}
 button,a,input,select,textarea{transition:border-color var(--app-fast),background-color var(--app-fast),color var(--app-fast),box-shadow var(--app-fast),opacity var(--app-fast)}
 :where(button,a,input,select,textarea):focus-visible{outline:0;box-shadow:var(--app-focus)!important}

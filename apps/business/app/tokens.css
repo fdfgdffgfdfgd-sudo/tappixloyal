@@ -1,0 +1,123 @@
+/* Единственный источник значений оформления.
+ *
+ * До этого файла :root определялся в пяти местах — globals, product-shell,
+ * design-system-v3, app-shell-v4, design-system-v6 — и каждое следующее
+ * поколение переуказывало имена предыдущего на себя. Побеждало то, что
+ * импортировано последним, поэтому фирменный цвет зависел от порядка строк
+ * в layout.tsx: пять разных акцентов, ни один из которых не совпадал с
+ * design-system/tappix/MASTER.md.
+ *
+ * Ниже сначала идёт палитра ровно из MASTER.md, затем совместимость: все
+ * старые имена сохранены и указывают на неё, поэтому 3987 правил в 51 файле
+ * менять не потребовалось. Новый код должен брать имена только из первого
+ * блока; остальные существуют, чтобы старые слои продолжали работать, и
+ * исчезнут вместе с ними.
+ */
+
+:root {
+  /* Semantic tokens — design-system/tappix/MASTER.md */
+  --app-bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-subtle: #f1f5f9;
+  --text: #0f172a;
+  /* MASTER.md называет здесь #64748b, но на --surface-subtle это даёт 4.34:1
+   * при требуемых тем же документом 4.5:1 — палитра противоречила собственному
+   * требованию AA. #5f6f86 — самый светлый оттенок, проходящий на всех трёх
+   * фонах (4.67 в худшем случае). */
+  --text-muted: #5f6f86;
+  --border: #e2e8f0;
+  --accent: #6352ee;
+  --accent-hover: #5140da;
+  --accent-soft: #eef0ff;
+  --success: #16794b;
+  --success-soft: #ecfdf3;
+  --warning: #a15c07;
+  --warning-soft: #fff7e6;
+  --danger: #b42335;
+  --danger-soft: #fff1f2;
+  --focus: #6352ee;
+
+  /* Оттенки, которых в MASTER.md нет, но которые реально используются. */
+  --border-strong: #cbd5e1;
+  --text-tertiary: #758195;
+
+  /* Форма, тени, движение. Радиусы приведены к MASTER.md — controls 9–11,
+   * sections 14–18. Тени и длительности сохраняют действующие значения. */
+  --radius-sm: 10px;
+  --radius: 14px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .04);
+  --shadow-md: 0 12px 32px rgba(15, 23, 42, .08);
+  --shadow: 0 12px 30px rgba(42, 34, 88, .07);
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --motion: 180ms cubic-bezier(.2, .8, .2, 1);
+  --focus-ring: 0 0 0 3px rgba(99, 82, 238, .24);
+
+  /* --- Совместимость. Ниже нет ни одного нового значения. --- */
+
+  /* globals.css */
+  --bg: var(--app-bg);
+  --muted: var(--text-muted);
+  --line: var(--border);
+  --primary: var(--accent);
+  --primary-dark: var(--accent-hover);
+
+  /* product-shell.css */
+  --product-bg: var(--app-bg);
+  --product-text: var(--text);
+  --product-muted: var(--text-muted);
+  --product-border: var(--border);
+  --product-accent: var(--accent);
+
+  /* design-system-v3.css */
+  --ink: var(--text);
+  --ink-soft: var(--text-muted);
+  --canvas: var(--app-bg);
+  --paper: var(--surface);
+  --paper-soft: var(--surface-subtle);
+  --stroke: var(--border);
+  --stroke-strong: var(--border-strong);
+  --brand: var(--accent);
+  --brand-strong: var(--accent-hover);
+  --brand-wash: var(--accent-soft);
+  --success-wash: var(--success-soft);
+
+  /* app-shell-v4.css */
+  --app-surface: var(--surface);
+  --app-surface-muted: var(--surface-subtle);
+  --app-text: var(--text);
+  --app-text-muted: var(--text-muted);
+  --app-border: var(--border);
+  --app-accent: var(--accent);
+  --app-accent-soft: var(--accent-soft);
+  --app-success: var(--success);
+  --app-warning: var(--warning);
+  --app-danger: var(--danger);
+  --app-radius-md: var(--radius);
+  --app-shadow: var(--shadow-sm);
+  --app-focus: var(--focus-ring);
+  --app-fast: var(--motion);
+
+  /* design-system-v6.css */
+  --ds-bg: var(--app-bg);
+  --ds-surface: var(--surface);
+  --ds-surface-subtle: var(--surface-subtle);
+  --ds-text: var(--text);
+  --ds-text-secondary: var(--text-muted);
+  --ds-text-tertiary: var(--text-tertiary);
+  --ds-border: var(--border);
+  --ds-border-strong: var(--border-strong);
+  --ds-primary: var(--accent);
+  --ds-primary-hover: var(--accent-hover);
+  --ds-primary-soft: var(--accent-soft);
+  --ds-success: var(--success);
+  --ds-success-soft: var(--success-soft);
+  --ds-warning: var(--warning);
+  --ds-warning-soft: var(--warning-soft);
+  --ds-danger: var(--danger);
+  --ds-danger-soft: var(--danger-soft);
+  --ds-radius-md: var(--radius);
+  --ds-shadow-sm: var(--shadow-sm);
+  --ds-shadow-md: var(--shadow-md);
+  --ds-focus: var(--focus-ring);
+  --ds-motion: var(--motion);
+}

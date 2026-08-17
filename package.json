@@ -5,6 +5,7 @@
     "dev": "npm --workspace @tappix/business run dev",
     "build": "npm --workspace @tappix/business run build",
     "lint": "npm --workspace @tappix/business run lint",
+    "test:tokens": "node infrastructure/scripts/check-design-tokens.js",
     "test:api": "docker run --rm -v \"$PWD/apps/api:/src\" -w /src golang:1.25-alpine sh -lc '/usr/local/go/bin/go test ./...'",
     "test": "npm run test:api && npm run test:unit && npm run lint && npm run build && npm run test:integration",
     "db:up": "docker compose up -d postgres redis",

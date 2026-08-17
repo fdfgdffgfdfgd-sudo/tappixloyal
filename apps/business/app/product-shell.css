@@ -1,4 +1,3 @@
-:root { --product-bg:#f6f7f9; --product-text:#111827; --product-muted:#566175; --product-border:#e5e7eb; --product-accent:#2563eb; }
 .product-shell { min-height:100dvh; background:var(--product-bg); display:grid; grid-template-columns:248px minmax(0,1fr); color:var(--product-text); }
 .product-sidebar { position:sticky; top:0; height:100dvh; padding:16px 12px; background:#0d1117; color:#fff; display:flex; flex-direction:column; z-index:30; }
 .workspace-control { position:relative; }
@@ -7,7 +6,7 @@
 .workspace-control strong,.workspace-menu strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
 .workspace-control small,.workspace-menu small { color:#9aa4b2; font-size:11px; }
 .workspace-control svg { width:16px; }
-.workspace-logo { width:34px; height:34px; border-radius:9px; background:#2563eb; color:#fff; display:grid; place-items:center; flex:none; font-weight:800; }
+.workspace-logo { width:34px; height:34px; border-radius:9px; background:var(--accent); color:#fff; display:grid; place-items:center; flex:none; font-weight:800; }
 .workspace-menu { position:absolute; left:0; top:64px; width:300px; padding:8px; border:1px solid var(--product-border); border-radius:14px; background:rgba(255,255,255,.98); color:var(--product-text); box-shadow:0 20px 55px rgba(15,23,42,.2); backdrop-filter:blur(16px); z-index:100; }
 .workspace-menu>small { display:block; padding:8px; color:var(--product-muted); font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
 .workspace-menu button,.workspace-menu a { width:100%; min-height:46px; padding:6px 8px; border:0; border-radius:9px; background:transparent; color:var(--product-text); display:flex; align-items:center; gap:10px; text-decoration:none; cursor:pointer; text-align:left; }

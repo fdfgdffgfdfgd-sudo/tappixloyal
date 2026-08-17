@@ -98,7 +98,7 @@
   display: inline-flex;
   min-height: 44px;
   align-items: center;
-  color: #6952e8;
+  color: var(--accent);
   font-weight: 700;
   font-size: 13px;
 }
