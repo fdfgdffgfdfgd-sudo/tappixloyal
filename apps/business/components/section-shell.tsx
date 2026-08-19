@@ -81,6 +81,7 @@ export function SectionShell({
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [identity, setIdentity] = useState<Identity | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [unreachable, setUnreachable] = useState(false);
   const commandTrigger = useRef<HTMLButtonElement>(null);
   const commandDialog = useDialogFocusTrap<HTMLDivElement>(commandOpen, closeCommand);
@@ -96,7 +97,8 @@ export function SectionShell({
       })
       // Swallowing this used to leave the header showing a placeholder name and
       // the sidebar claiming the system was fine. Say so instead.
-      .catch(() => setUnreachable(true));
+      .catch(() => setUnreachable(true))
+      .finally(() => setCheckingSession(false));
   }, []);
   const fullName = identity ? [identity.firstName, identity.lastName].filter(Boolean).join(" ") : "";
   // The shortcut listener is bound once, so it reads the palette's state here
@@ -150,6 +152,12 @@ export function SectionShell({
     // The profile is read back from /auth/me after the reload, so there is no
     // cached copy to keep in sync here.
     window.location.assign("/");
+  }
+  if (checkingSession) {
+    return <main className="session-check" aria-busy="true" aria-live="polite"><span className="session-check-mark">T</span><strong>Проверяем доступ…</strong></main>;
+  }
+  if (!identity) {
+    return <main className="session-check session-check-error"><strong>Не удалось подтвердить вход</strong><p>Войдите снова или повторите проверку.</p><div><a href="/login">Войти</a><button onClick={() => location.reload()}>Повторить</button></div></main>;
   }
   return (
     <div className="product-shell">

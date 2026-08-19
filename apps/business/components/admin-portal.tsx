@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
   Activity,
@@ -112,7 +113,9 @@ export function AdminPortal() {
     [query, setQuery] = useState(""),
     [open, setOpen] = useState(false),
     [selected, setSelected] = useState<Company | null>(null),
-    [msg, setMsg] = useState("");
+    [msg, setMsg] = useState(""),
+    [checkingSession, setCheckingSession] = useState(true),
+    [authorized, setAuthorized] = useState(false);
   async function request(path: string, init: RequestInit = {}) {
     let response = await fetch(`${base}${path}`, {
       ...init,
@@ -160,8 +163,11 @@ export function AdminPortal() {
       setCustomers(customerData);
       setSupportSessions(sessions);
       setAudit(events);
+      setAuthorized(true);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Ошибка загрузки");
+    } finally {
+      setCheckingSession(false);
     }
   }
   async function createSupportSession() {
@@ -254,13 +260,17 @@ export function AdminPortal() {
       "Starter · Growth · Pro",
     ],
   }[view] as string[] | undefined;
+  if (checkingSession) {
+    return <main className="session-check" aria-busy="true" aria-live="polite"><span className="session-check-mark">T</span><strong>Проверяем доступ к Platform Console…</strong></main>;
+  }
+  if (!authorized) {
+    return <main className="session-check session-check-error"><strong>Доступ не подтверждён</strong><p>{msg || "Войдите с учётной записью Platform Owner."}</p><div><a href="/login">Войти</a><button onClick={() => location.reload()}>Повторить</button></div></main>;
+  }
   return (
     <div className="platform-shell">
       <aside>
         <div className="platform-brand">
-          <span>
-            <ShieldCheck />
-          </span>
+          <span><Image src="/tappix-mark.png" alt="" aria-hidden width={26} height={26} priority /></span>
           <div>
             <strong>Tappix</strong>
             <small>Platform Console</small>

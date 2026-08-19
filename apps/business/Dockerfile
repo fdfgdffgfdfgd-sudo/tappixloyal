@@ -18,6 +18,7 @@ ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 COPY --from=build --chown=nextjs:nodejs /app/apps/business/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/apps/business/.next/static ./apps/business/.next/static
+COPY --from=build --chown=nextjs:nodejs /app/apps/business/public ./apps/business/public
 USER nextjs
 EXPOSE 3000
 CMD ["node", "apps/business/server.js"]

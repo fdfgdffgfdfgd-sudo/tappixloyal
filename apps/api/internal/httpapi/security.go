@@ -22,7 +22,7 @@ func (a *api) setSessionCookies(w http.ResponseWriter, access, refresh, role str
 	if role == "customer" {
 		refreshMaxAge = 90 * 24 * 60 * 60
 	}
-	http.SetCookie(w, &http.Cookie{Name: prefix + "_access", Value: access, Path: "/api/v1", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: 15 * 60})
+	http.SetCookie(w, &http.Cookie{Name: prefix + "_access", Value: access, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: 15 * 60})
 	http.SetCookie(w, &http.Cookie{Name: prefix + "_refresh", Value: refresh, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: refreshMaxAge})
 	csrf := make([]byte, 32)
 	_, _ = rand.Read(csrf)
@@ -42,7 +42,7 @@ func sessionCookiePrefix(role string) string {
 
 func (a *api) clearSessionCookies(w http.ResponseWriter, audience string) {
 	prefix := sessionCookiePrefix(audience)
-	for _, item := range []struct{ name, path string }{{prefix + "_access", "/api/v1"}, {prefix + "_refresh", "/api/v1/auth"}, {prefix + "_csrf", "/"}} {
+	for _, item := range []struct{ name, path string }{{prefix + "_access", "/"}, {prefix + "_access", "/api/v1"}, {prefix + "_refresh", "/api/v1/auth"}, {prefix + "_csrf", "/"}} {
 		http.SetCookie(w, &http.Cookie{Name: item.name, Value: "", Path: item.path, HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteStrictMode})
 	}
 }

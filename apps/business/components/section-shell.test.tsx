@@ -46,7 +46,7 @@ describe("SectionShell", () => {
 
     // The header used to fall back to a hardcoded name, so every operator was
     // greeted as somebody else.
-    await waitFor(() => expect(screen.getByText("Нет связи с сервером")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Не удалось подтвердить вход")).toBeInTheDocument());
     expect(screen.queryByText("Армат")).not.toBeInTheDocument();
     expect(screen.queryByText("Владелец")).not.toBeInTheDocument();
     expect(screen.queryByText("Сотрудник")).not.toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("SectionShell", () => {
     respondWith({ role: "company_owner", firstName: "Мадина", lastName: "Ким" });
     renderShell();
 
-    expect(screen.getByText("Проверяем соединение…")).toBeInTheDocument();
+    expect(screen.getByText("Проверяем доступ…")).toBeInTheDocument();
     expect(await screen.findByText("Система работает")).toBeInTheDocument();
   });
 

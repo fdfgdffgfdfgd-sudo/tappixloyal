@@ -60,7 +60,7 @@ func TestGuestSessionCookiesAreHttpOnlyAndScoped(t *testing.T) {
 			t.Fatalf("cookie %s is missing security attributes", cookie.Name)
 		}
 	}
-	if byName["tappix_guest_access"].Path != "/api/v1" {
+	if byName["tappix_guest_access"].Path != "/" {
 		t.Fatal("guest access cookie has unexpected path")
 	}
 	if byName["tappix_guest_refresh"].Path != "/api/v1/auth" || byName["tappix_guest_refresh"].MaxAge != 90*24*60*60 {
