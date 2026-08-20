@@ -1,0 +1,20 @@
+services:
+  benchmark-api:
+    image: tappix-api:latest
+    environment:
+      APP_ENV: development
+      TAPPIX_TEST_ENV: "1"
+      DATABASE_URL: postgres://tappix:tappix_local@postgres:5432/tappix_bench?sslmode=disable
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: benchmark-only-secret
+      HTTP_ADDR: :8080
+      LOGIN_RATE_LIMIT: "5000"
+      PUBLIC_RATE_LIMIT: "5000"
+      AUTH_RATE_LIMIT: "5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "18080:8080"

@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type websiteInput struct {
@@ -122,8 +124,12 @@ func (a *api) publicCreateBooking(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.BranchID == "" || in.CustomerName == "" || len(in.Phone) < 7 || in.Service == "" || in.StartsAt == "" {
+	if in.BranchID == "" || in.CustomerName == "" || in.Service == "" || in.StartsAt == "" {
 		fail(w, 422, "VALIDATION_ERROR", "Заполните данные записи")
+		return
+	}
+	if !regexp.MustCompile(`^[+]?\d{7,15}$`).MatchString(strings.TrimSpace(in.Phone)) {
+		fail(w, 422, "VALIDATION_ERROR", "Укажите корректный телефон")
 		return
 	}
 	starts, err := time.Parse(time.RFC3339, in.StartsAt)
@@ -131,9 +137,45 @@ func (a *api) publicCreateBooking(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "VALIDATION_ERROR", "Выберите будущую дату и время")
 		return
 	}
+	var published, moduleEnabled, subscriptionActive bool
+	var services []string
+	if err = a.db.QueryRow(r.Context(), `SELECT w.published,w.services,EXISTS(SELECT 1 FROM company_modules cm WHERE cm.company_id=c.id AND cm.module_code='booking' AND cm.enabled),EXISTS(SELECT 1 FROM subscriptions s WHERE s.company_id=c.id AND s.status IN ('trial','active','past_due') AND (s.current_period_ends_at IS NULL OR s.current_period_ends_at>now())) FROM companies c LEFT JOIN website_settings w ON w.company_id=c.id JOIN branches b ON b.company_id=c.id WHERE c.slug=$1 AND b.id=$2 AND c.status='active' AND b.is_active`, r.PathValue("slug"), in.BranchID).Scan(&published, &services, &moduleEnabled, &subscriptionActive); err != nil {
+		fail(w, 404, "BRANCH_NOT_FOUND", "Компания или филиал не найдены")
+		return
+	}
+	if !published {
+		fail(w, 404, "SITE_NOT_FOUND", "Сайт не опубликован")
+		return
+	}
+	if !moduleEnabled || !subscriptionActive {
+		fail(w, 403, "ENTITLEMENT_REQUIRED", "Бронирование недоступно по тарифу")
+		return
+	}
+	validService := false
+	for _, service := range services {
+		if service == in.Service {
+			validService = true
+			break
+		}
+	}
+	if !validService {
+		fail(w, 422, "VALIDATION_ERROR", "Услуга недоступна на сайте")
+		return
+	}
 	var id string
-	err = a.db.QueryRow(r.Context(), `INSERT INTO bookings(company_id,branch_id,customer_name,phone,service,starts_at,comment) SELECT c.id,b.id,$3,$4,$5,$6,$7 FROM companies c JOIN branches b ON b.company_id=c.id WHERE c.slug=$1 AND b.id=$2 AND c.status='active' AND b.is_active RETURNING id`, r.PathValue("slug"), in.BranchID, in.CustomerName, in.Phone, in.Service, starts, in.Comment).Scan(&id)
+	err = a.db.QueryRow(r.Context(), `INSERT INTO bookings(company_id,branch_id,customer_name,phone,service,starts_at,comment)
+		SELECT c.id,b.id,$3,$4,$5,$6,$7 FROM companies c JOIN branches b ON b.company_id=c.id
+		JOIN website_settings w ON w.company_id=c.id AND w.published AND w.services @> jsonb_build_array($5::text)
+		WHERE c.slug=$1 AND b.id=$2 AND c.status='active' AND b.is_active
+		AND EXISTS (SELECT 1 FROM company_modules cm WHERE cm.company_id=c.id AND cm.module_code='booking' AND cm.enabled)
+		AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.company_id=c.id AND s.status IN ('trial','active','past_due') AND (s.current_period_ends_at IS NULL OR s.current_period_ends_at>now()))
+		RETURNING id`, r.PathValue("slug"), in.BranchID, in.CustomerName, in.Phone, in.Service, starts, in.Comment).Scan(&id)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			fail(w, 409, "SLOT_UNAVAILABLE", "Это время уже занято")
+			return
+		}
 		fail(w, 404, "BRANCH_NOT_FOUND", "Компания или филиал не найдены")
 		return
 	}
@@ -170,6 +212,17 @@ func (a *api) updateBooking(w http.ResponseWriter, r *http.Request) {
 	if in.Status != "new" && in.Status != "confirmed" && in.Status != "completed" && in.Status != "cancelled" {
 		fail(w, 422, "VALIDATION_ERROR", "Некорректный статус записи")
 		return
+	}
+	if in.Status != "cancelled" {
+		var current string
+		if err := a.db.QueryRow(r.Context(), `SELECT status FROM bookings WHERE company_id=$1 AND id=$2`, companyID(r), r.PathValue("id")).Scan(&current); err != nil {
+			fail(w, 404, "BOOKING_NOT_FOUND", "Запись не найдена")
+			return
+		}
+		if current == "cancelled" {
+			fail(w, 409, "INVALID_BOOKING_TRANSITION", "Отменённую запись нельзя активировать")
+			return
+		}
 	}
 	tag, err := a.db.Exec(r.Context(), `UPDATE bookings SET status=$3,updated_at=now() WHERE company_id=$1 AND id=$2`, companyID(r), r.PathValue("id"), in.Status)
 	if err != nil || tag.RowsAffected() == 0 {

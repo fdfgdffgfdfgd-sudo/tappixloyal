@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 
@@ -41,9 +42,9 @@ func validateTransaction(in CanonicalTransaction) error {
 	if in.OccurredAt.IsZero() {
 		return errors.New("occurredAt is required")
 	}
-	if in.GrossAmount < 0 || in.DiscountAmount < 0 || in.BonusPaidAmount < 0 || in.CashPaidAmount < 0 || in.NetAmount < 0 || in.BonusEarned < 0 || in.BonusSpent < 0 {
-		return errors.New("amounts cannot be negative")
-	}
+	amounts := []float64{in.GrossAmount, in.DiscountAmount, in.BonusPaidAmount, in.CashPaidAmount, in.NetAmount, float64(in.BonusEarned), float64(in.BonusSpent)}
+	for _, amount := range amounts { if math.IsNaN(amount) || math.IsInf(amount, 0) || amount < 0 { return errors.New("amounts must be finite and non-negative") } }
+	if in.NetAmount > in.GrossAmount || in.DiscountAmount > in.GrossAmount { return errors.New("transaction totals are inconsistent") }
 	if in.Status != "completed" && in.Status != "refunded" && in.Status != "cancelled" && in.Status != "partially_refunded" && in.Status != "pending" {
 		return errors.New("unsupported transaction status")
 	}
@@ -51,9 +52,14 @@ func validateTransaction(in CanonicalTransaction) error {
 		in.Currency = "KZT"
 	}
 	for _, item := range in.Items {
-		if strings.TrimSpace(item.Name) == "" || item.Quantity <= 0 || item.UnitPrice < 0 || item.NetAmount < 0 {
+		if strings.TrimSpace(item.Name) == "" || item.Quantity <= 0 || math.IsNaN(item.Quantity) || math.IsInf(item.Quantity, 0) || math.IsNaN(item.UnitPrice) || math.IsInf(item.UnitPrice, 0) || math.IsNaN(item.NetAmount) || math.IsInf(item.NetAmount, 0) || item.UnitPrice < 0 || item.NetAmount < 0 || (item.CostAmount != nil && (*item.CostAmount < 0 || math.IsNaN(*item.CostAmount) || math.IsInf(*item.CostAmount, 0))) {
 			return errors.New("invalid transaction item")
 		}
+	}
+	for _, payment := range in.Payments {
+		if payment.Amount < 0 || math.IsNaN(payment.Amount) || math.IsInf(payment.Amount, 0) || payment.OccurredAt.IsZero() { return errors.New("invalid payment") }
+		if payment.Type != "cash" && payment.Type != "card" && payment.Type != "wallet" && payment.Type != "bank_transfer" { return errors.New("unsupported payment type") }
+		if payment.Status != "pending" && payment.Status != "authorized" && payment.Status != "captured" && payment.Status != "refunded" && payment.Status != "failed" { return errors.New("unsupported payment status") }
 	}
 	return nil
 }
@@ -701,6 +707,6 @@ func appendOutbox(ctx context.Context, tx pgx.Tx, in CanonicalTransaction, trans
 		eventType = "SalesTransactionCancelled"
 	}
 	_, err := tx.Exec(ctx, `INSERT INTO outbox_events(company_id,event_type,aggregate_type,aggregate_id,payload,idempotency_key)
-		VALUES($1,$2,'sales_transaction',$3,jsonb_build_object('transactionId',$3::text,'customerId',$4::text,'branchId',$5::text,'provider',$6::text,'externalId',$7::text),$8)`, in.CompanyID, eventType, transactionID, customerID, branchID, in.Provider, in.ExternalID, "outbox:"+in.Provider+":"+in.ExternalID)
+		VALUES($1,$2,'sales_transaction',$3::uuid,jsonb_build_object('transactionId',$3::text,'customerId',$4::text,'branchId',$5::text,'provider',$6::text,'externalId',$7::text),$8)`, in.CompanyID, eventType, transactionID, customerID, branchID, in.Provider, in.ExternalID, "outbox:"+in.Provider+":"+in.ExternalID)
 	return err
 }

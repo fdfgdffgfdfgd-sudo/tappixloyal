@@ -1,0 +1,3 @@
+package main
+import("context";"fmt";"os";"time";"github.com/jackc/pgx/v5/pgxpool")
+func main(){if os.Getenv("TAPPIX_TEST_ENV")!="1"{panic("set TAPPIX_TEST_ENV=1")}; d:=os.Getenv("BENCHMARK_DATABASE_URL");if d==""{panic("BENCHMARK_DATABASE_URL required")};p,e:=pgxpool.New(context.Background(),d);if e!=nil{panic(e)};defer p.Close();ctx:=context.Background();for i:=0;i<10;i++{s:=p.Stat();fmt.Printf("max=%d total=%d acquired=%d idle=%d constructing=%d acquire_count=%d empty_acquire=%d canceled=%d acquire_duration=%s\n",s.MaxConns(),s.TotalConns(),s.AcquiredConns(),s.IdleConns(),s.ConstructingConns(),s.AcquireCount(),s.EmptyAcquireCount(),s.CanceledAcquireCount(),s.AcquireDuration());_,_=p.Exec(ctx,"SELECT 1");time.Sleep(time.Second)}}

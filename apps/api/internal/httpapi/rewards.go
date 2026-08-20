@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,7 +75,13 @@ func (a *api) customerOwnRewards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) listRewardDefinitions(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query(r.Context(), `SELECT d.id,d.name,d.description,d.reward_type,d.value,d.validity_days,d.repeatable,d.cooldown_days,d.inventory_total,d.inventory_issued,d.confirmation_method,d.branch_ids,d.is_active,d.created_at,(SELECT count(*) FROM reward_rules rr WHERE rr.definition_id=d.id AND rr.is_active) FROM reward_definitions d WHERE d.company_id=$1 AND d.deleted_at IS NULL ORDER BY d.created_at DESC`, companyID(r))
+	limit, offset := 0, 0
+	if raw := r.URL.Query().Get("limit"); raw != "" { parsed, e := strconv.Atoi(raw); if e != nil || parsed < 1 { fail(w, 422, "INVALID_PAGINATION", "limit должен быть положительным числом"); return }; if parsed > 100 { parsed = 100 }; limit = parsed }
+	if raw := r.URL.Query().Get("offset"); raw != "" { parsed, e := strconv.Atoi(raw); if e != nil || parsed < 0 { fail(w, 422, "INVALID_PAGINATION", "offset должен быть неотрицательным числом"); return }; offset = parsed }
+	query := `SELECT d.id,d.name,d.description,d.reward_type,d.value,d.validity_days,d.repeatable,d.cooldown_days,d.inventory_total,d.inventory_issued,d.confirmation_method,d.branch_ids,d.is_active,d.created_at,coalesce(rr.active_rules,0) FROM reward_definitions d LEFT JOIN (SELECT definition_id,count(*) AS active_rules FROM reward_rules WHERE is_active GROUP BY definition_id) rr ON rr.definition_id=d.id WHERE d.company_id=$1 AND d.deleted_at IS NULL ORDER BY d.created_at DESC,d.id DESC`
+	args := []any{companyID(r)}
+	if limit > 0 { query += ` LIMIT $2 OFFSET $3`; args = append(args, limit, offset); w.Header().Set("X-Pagination-Limit", strconv.Itoa(limit)); w.Header().Set("X-Pagination-Offset", strconv.Itoa(offset)) }
+	rows, err := a.db.Query(r.Context(), query, args...)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить каталог наград")
 		return

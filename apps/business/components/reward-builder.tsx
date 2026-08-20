@@ -14,7 +14,7 @@ export function RewardBuilder(){
  const[definitions,setDefinitions]=useState<Definition[]>([]),[rules,setRules]=useState<Rule[]>([]),[open,setOpen]=useState(false),[step,setStep]=useState<1|2>(1),[selected,setSelected]=useState(""),[message,setMessage]=useState(""),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
  const[reward,setReward]=useState({name:"",description:"",rewardType:"gift",value:0,validityDays:30,repeatable:true,cooldownDays:0,inventoryLimited:false,inventoryTotal:100,confirmationMethod:"staff"});
  const[rule,setRule]=useState({eventType:"visit_created",threshold:5,progressMode:"repeat"});
- async function load(){setLoading(true);try{const[d,r]=await Promise.all([api<Definition[]>("/reward-definitions"),api<Rule[]>("/reward-rules")]);setDefinitions(d);setRules(r)}catch(e){setMessage(e instanceof Error?e.message:"Не удалось загрузить награды")}finally{setLoading(false)}}
+ async function load(){setLoading(true);try{const[d,r]=await Promise.all([api<Definition[]>("/reward-definitions?limit=100&offset=0"),api<Rule[]>("/reward-rules")]);setDefinitions(d);setRules(r)}catch(e){setMessage(e instanceof Error?e.message:"Не удалось загрузить награды")}finally{setLoading(false)}}
  useEffect(()=>{void load()},[]);
  const active=definitions.filter(x=>x.active),issued=definitions.reduce((sum,x)=>sum+x.inventoryIssued,0),automated=rules.filter(x=>x.active&&x.eventType!=="manual").length;
  const selectedDefinition=useMemo(()=>definitions.find(x=>x.id===selected),[definitions,selected]);

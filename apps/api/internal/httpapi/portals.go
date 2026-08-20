@@ -90,7 +90,10 @@ func (a *api) customerRegister(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else if err == nil {
-		_, err = tx.Exec(r.Context(), `UPDATE customers SET pin_hash=$3,first_name=$4,last_name=$5,birthday=coalesce($6,birthday),gender=coalesce(nullif($7,''),gender),email=coalesce(nullif($8,''),email),city=coalesce(nullif($9,''),city),updated_at=now() WHERE company_id=$1 AND id=$2`, company, id, string(hash), strings.TrimSpace(in.FirstName), strings.TrimSpace(in.LastName), birthday, strings.TrimSpace(in.Gender), strings.TrimSpace(in.Email), strings.TrimSpace(in.City))
+		// Re-opening an existing card must never replace its authentication secret.
+		// Registration may refresh profile fields, but PIN changes belong to an
+		// authenticated account-management flow.
+		_, err = tx.Exec(r.Context(), `UPDATE customers SET first_name=$3,last_name=$4,birthday=coalesce($5,birthday),gender=coalesce(nullif($6,''),gender),email=coalesce(nullif($7,''),email),city=coalesce(nullif($8,''),city),updated_at=now() WHERE company_id=$1 AND id=$2`, company, id, strings.TrimSpace(in.FirstName), strings.TrimSpace(in.LastName), birthday, strings.TrimSpace(in.Gender), strings.TrimSpace(in.Email), strings.TrimSpace(in.City))
 	}
 	if err == nil && created && strings.TrimSpace(in.ReferralCode) != "" {
 		code := strings.ToUpper(strings.TrimSpace(in.ReferralCode))
@@ -140,10 +143,24 @@ func (a *api) customerLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	var id, company, hash string
 	err := a.db.QueryRow(r.Context(), `SELECT c.id,c.company_id,c.pin_hash FROM customers c JOIN companies co ON co.id=c.company_id WHERE co.slug=$1 AND c.phone=$2 AND c.deleted_at IS NULL`, strings.ToLower(in.Company), in.Phone).Scan(&id, &company, &hash)
+	lockKey := "customer-pin-lock:" + strings.ToLower(in.Company) + ":" + in.Phone
+	failKey := "customer-pin-fail:" + strings.ToLower(in.Company) + ":" + in.Phone
+	if a.redis != nil {
+		if locked, _ := a.redis.Exists(r.Context(), lockKey).Result(); locked > 0 {
+			fail(w, http.StatusTooManyRequests, "PIN_LOCKED", "Слишком много неверных попыток. Попробуйте позже")
+			return
+		}
+	}
 	if err != nil || hash == "" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.PIN)) != nil {
+		if a.redis != nil {
+			count, _ := a.redis.Incr(r.Context(), failKey).Result()
+			if count == 1 { _ = a.redis.Expire(r.Context(), failKey, 15*time.Minute).Err() }
+			if count >= 5 { _ = a.redis.Set(r.Context(), lockKey, "1", 15*time.Minute).Err() }
+		}
 		fail(w, 401, "INVALID_CREDENTIALS", "Неверный телефон или PIN")
 		return
 	}
+	if a.redis != nil { _ = a.redis.Del(r.Context(), failKey).Err() }
 	access, refresh, err := a.issueTokens(r, id, company, "customer")
 	if err != nil {
 		fail(w, 500, "TOKEN_ERROR", "Не удалось создать сессию")
