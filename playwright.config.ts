@@ -5,6 +5,10 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 8_000 },
   fullyParallel: false,
+  // The local E2E fixtures intentionally exercise one shared seeded tenant and
+  // guest session. Keep projects on a single worker so tests cannot overwrite
+  // that state while another browser is mid-flow.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PREFIXES = ["/login", "/join/", "/r/", "/site/"];
+const PUBLIC_PREFIXES = ["/login", "/join/", "/r/", "/site/", "/customer"];
 
 function loginRedirect(request: NextRequest) {
   const url = new URL("/login", request.url);
@@ -12,9 +12,6 @@ export function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   if (PUBLIC_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix))) {
     return NextResponse.next();
-  }
-  if (path === "/customer") {
-    return request.cookies.has("tappix_guest_access") || request.cookies.has("tappix_guest_csrf") ? NextResponse.next() : loginRedirect(request);
   }
   if (path === "/admin") {
     return request.cookies.has("tappix_platform_access") || request.cookies.has("tappix_platform_csrf") ? NextResponse.next() : loginRedirect(request);
