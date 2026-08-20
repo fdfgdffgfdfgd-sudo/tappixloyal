@@ -20,6 +20,13 @@ export const assetUrl = (path: string) => assetUrlFrom(API_URL, path);
 
 export const OFFLINE_MESSAGE="Нет связи с сервером. Проверьте подключение и повторите.";
 
+const ERROR_MESSAGES: Record<string, string> = {
+  SLOT_UNAVAILABLE: "Это время уже занято. Выберите другое.",
+  RATE_LIMITED: "Слишком много попыток. Попробуйте немного позже.",
+  FORBIDDEN: "У вас нет доступа к этой операции.",
+  ENTITLEMENT_REQUIRED: "Функция недоступна на текущем тарифе.",
+};
+
 // fetch rejects with a bare "Failed to fetch" when the request never reaches the
 // API. That string used to surface straight into the panel, so translate it once
 // here instead of in every caller.
@@ -32,7 +39,10 @@ export async function api<T>(path:string, init:RequestInit={}) {
 	if(response.status===401){window.location.href="/login";throw new Error("Сессия истекла. Войдите заново.")}
 	const result = await response.json().catch(()=>null);
 	if (!result) throw new Error("Сервер вернул неожиданный ответ. Обновите страницу.");
-	if (!result.success) throw new Error(result.error?.message ?? "Ошибка запроса");
+	if (!result.success) {
+    const error = result.error ?? {};
+    throw new Error(ERROR_MESSAGES[error.code] ?? error.message ?? "Не удалось выполнить операцию.");
+  }
 	return result.data as T;
 }
 
