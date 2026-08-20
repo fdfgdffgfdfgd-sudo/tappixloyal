@@ -95,3 +95,16 @@
   .staff-reward-ready { grid-template-columns: 34px 1fr; }
   .staff-reward-ready button { grid-column: 1 / -1; width: 100%; }
 }
+
+/* Keep the primary cashier action reachable with one hand on small screens. */
+@media (max-width: 620px) {
+  .scan-result:has(.guest-confirm) {
+    padding-bottom: 86px;
+  }
+  .guest-confirm .confirm-visit {
+    position: sticky;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 5;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .18);
+  }
+}
