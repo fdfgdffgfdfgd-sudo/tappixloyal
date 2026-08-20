@@ -19,7 +19,9 @@ func (a *api) rateLimit(next http.Handler) http.Handler {
 		} else if strings.HasPrefix(r.URL.Path, "/api/v1/auth/") || strings.HasPrefix(r.URL.Path, "/api/v1/customer/") {
 			limitName, windowName = "AUTH_RATE_LIMIT", "AUTH_RATE_WINDOW"
 		}
-		if limitName == "PUBLIC_RATE_LIMIT" || limitName == "AUTH_RATE_LIMIT" { limit, window = configuredRate(limitName, windowName, limit, window) }
+		if limitName == "PUBLIC_RATE_LIMIT" || limitName == "AUTH_RATE_LIMIT" {
+			limit, window = configuredRate(limitName, windowName, limit, window)
+		}
 		if strings.HasPrefix(r.URL.Path, "/api/v1/staff/customers/lookup") {
 			limit = 20
 		}

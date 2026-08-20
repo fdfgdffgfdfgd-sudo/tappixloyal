@@ -154,13 +154,19 @@ func (a *api) customerLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil || hash == "" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.PIN)) != nil {
 		if a.redis != nil {
 			count, _ := a.redis.Incr(r.Context(), failKey).Result()
-			if count == 1 { _ = a.redis.Expire(r.Context(), failKey, 15*time.Minute).Err() }
-			if count >= 5 { _ = a.redis.Set(r.Context(), lockKey, "1", 15*time.Minute).Err() }
+			if count == 1 {
+				_ = a.redis.Expire(r.Context(), failKey, 15*time.Minute).Err()
+			}
+			if count >= 5 {
+				_ = a.redis.Set(r.Context(), lockKey, "1", 15*time.Minute).Err()
+			}
 		}
 		fail(w, 401, "INVALID_CREDENTIALS", "Неверный телефон или PIN")
 		return
 	}
-	if a.redis != nil { _ = a.redis.Del(r.Context(), failKey).Err() }
+	if a.redis != nil {
+		_ = a.redis.Del(r.Context(), failKey).Err()
+	}
 	access, refresh, err := a.issueTokens(r, id, company, "customer")
 	if err != nil {
 		fail(w, 500, "TOKEN_ERROR", "Не удалось создать сессию")

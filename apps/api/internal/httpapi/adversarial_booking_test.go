@@ -50,9 +50,13 @@ func newAdversarialBookingFixture(t *testing.T) *adversarialBookingFixture {
 		t.Fatal(err)
 	}
 	_, err = db.Exec(t.Context(), `INSERT INTO subscriptions(company_id,plan_code,status,current_period_ends_at) VALUES($1,'pro','active',now()+interval '30 days')`, f.company)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.Exec(t.Context(), `INSERT INTO company_modules(company_id,module_code,enabled) VALUES($1,'booking',true)`, f.company)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_, _ = db.Exec(context.Background(), `DELETE FROM bookings WHERE company_id=$1`, f.company)
 		_, _ = db.Exec(context.Background(), `DELETE FROM company_modules WHERE company_id=$1`, f.company)
