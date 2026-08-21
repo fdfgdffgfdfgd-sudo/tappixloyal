@@ -131,6 +131,12 @@ func processPosterWebhookTransaction(ctx context.Context, db *pgxpool.Pool, adap
 
 func finishPosterJob(ctx context.Context, db *pgxpool.Pool, jobID string, cause error) error {
 	_, err := db.Exec(ctx, `UPDATE integration_jobs SET status=CASE WHEN attempts>=max_attempts THEN 'dead' ELSE 'failed' END,last_error=$2,available_at=now()+make_interval(secs=>least(3600,power(2,attempts)::integer)) WHERE id=$1`, jobID, truncate(cause.Error(), 4000))
+	if err == nil && strings.Contains(cause.Error(), "invalid encrypted secret") {
+		// A ciphertext created with a different encryption key cannot be retried
+		// successfully. Surface an actionable connection state instead of keeping
+		// the integration looking active while every worker retry fails.
+		_, err = db.Exec(ctx, `UPDATE integration_connections c SET status='error',last_error_code='CREDENTIALS_INVALID',last_error_message='Credentials must be reconnected',updated_at=now() WHERE c.id=(SELECT connection_id FROM integration_jobs WHERE id=$1)`, jobID)
+	}
 	if err == nil {
 		_, err = db.Exec(ctx, `UPDATE webhook_deliveries d SET status=CASE WHEN j.attempts>=j.max_attempts THEN 'dead' ELSE 'failed' END,
 			attempts=j.attempts,last_error=$2,processed_at=CASE WHEN j.attempts>=j.max_attempts THEN now() ELSE NULL END
