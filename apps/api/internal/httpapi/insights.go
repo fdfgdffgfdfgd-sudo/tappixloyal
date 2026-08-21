@@ -30,6 +30,10 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 	if len(branch) != 36 || strings.Count(branch, "-") != 4 {
 		branch = ""
 	}
+	// Always bind a string (including the empty string) so pgx/PostgreSQL can
+	// infer one stable type for the optional branch parameter. Passing an
+	// untyped nil here makes inference driver/version dependent.
+	branchArg := branch
 	days := 30
 	if period == "week" {
 		days = 7
@@ -37,12 +41,12 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 		days = 90
 	}
 	rows, err := a.db.Query(r.Context(), `SELECT d::date,
-		 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.created_at::date=d::date AND c.deleted_at IS NULL AND ($3='' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=nullif($3,'')::uuid)),
-		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3='' OR v.branch_id=nullif($3,'')::uuid)),
-		 (SELECT coalesce(sum(v.points_added),0) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3='' OR v.branch_id=nullif($3,'')::uuid)),
-		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3='' OR v.branch_id=nullif($3,'')::uuid) AND v.created_at=(SELECT min(v2.created_at) FROM visits v2 WHERE v2.company_id=$1 AND v2.customer_id=v.customer_id)),
-		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3='' OR v.branch_id=nullif($3,'')::uuid) AND v.created_at>(SELECT min(v2.created_at) FROM visits v2 WHERE v2.company_id=$1 AND v2.customer_id=v.customer_id))
-		 FROM generate_series(current_date-$2::int,current_date,interval '1 day') d ORDER BY d`, tenant, days-1, branch)
+		 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.created_at::date=d::date AND c.deleted_at IS NULL AND ($3::text = '' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=CAST(NULLIF($3::text,'') AS uuid)))),
+		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid))),
+		 (SELECT coalesce(sum(v.points_added),0) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid))),
+		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid)) AND v.created_at=(SELECT min(v2.created_at) FROM visits v2 WHERE v2.company_id=$1 AND v2.customer_id=v.customer_id)),
+		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid)) AND v.created_at>(SELECT min(v2.created_at) FROM visits v2 WHERE v2.company_id=$1 AND v2.customer_id=v.customer_id))
+		 FROM generate_series(current_date-$2::int,current_date,interval '1 day') d ORDER BY d`, tenant, days-1, branchArg)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить аналитику")
 		return
@@ -64,13 +68,13 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 	}
 	var totalCustomers, periodVisits, pointsIssued, pointsRedeemed, active, repeatActive, newCustomers int
 	_ = a.db.QueryRow(r.Context(), `SELECT
-	 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL AND ($3='' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=nullif($3,'')::uuid))),
-	 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at>=current_date-make_interval(days=>$2-1) AND ($3='' OR v.branch_id=nullif($3,'')::uuid)),
-	 (SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=$1 AND b.operation='credit' AND b.created_at>=current_date-make_interval(days=>$2-1) AND ($3='' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=b.company_id AND v.customer_id=b.customer_id AND v.branch_id=nullif($3,'')::uuid))),
-	 (SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=$1 AND b.operation='debit' AND b.created_at>=current_date-make_interval(days=>$2-1) AND ($3='' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=b.company_id AND v.customer_id=b.customer_id AND v.branch_id=nullif($3,'')::uuid))),
-	 (SELECT count(DISTINCT customer_id) FROM visits v WHERE v.company_id=$1 AND v.created_at>=current_date-make_interval(days=>$2-1) AND ($3='' OR v.branch_id=nullif($3,'')::uuid)),
-	 (SELECT count(*) FROM (SELECT customer_id FROM visits v WHERE v.company_id=$1 AND v.created_at>=current_date-make_interval(days=>$2-1) AND ($3='' OR v.branch_id=nullif($3,'')::uuid) GROUP BY customer_id HAVING count(*)>=2) q),
-	 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL AND c.created_at>=current_date-make_interval(days=>$2-1) AND ($3='' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=nullif($3,'')::uuid)))`, tenant, days, branch).Scan(&totalCustomers, &periodVisits, &pointsIssued, &pointsRedeemed, &active, &repeatActive, &newCustomers)
+		 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL AND ($3::text = '' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=CAST(NULLIF($3::text,'') AS uuid))))),
+		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at>=current_date-make_interval(days=>$2-1) AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid))),
+		 (SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=$1 AND b.operation='credit' AND b.created_at>=current_date-make_interval(days=>$2-1) AND ($3::text = '' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=b.company_id AND v.customer_id=b.customer_id AND v.branch_id=CAST(NULLIF($3::text,'') AS uuid)))),
+		 (SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=$1 AND b.operation='debit' AND b.created_at>=current_date-make_interval(days=>$2-1) AND ($3::text = '' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=b.company_id AND v.customer_id=b.customer_id AND v.branch_id=CAST(NULLIF($3::text,'') AS uuid)))),
+		 (SELECT count(DISTINCT customer_id) FROM visits v WHERE v.company_id=$1 AND v.created_at>=current_date-make_interval(days=>$2-1) AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid))),
+		 (SELECT count(*) FROM (SELECT customer_id FROM visits v WHERE v.company_id=$1 AND v.created_at>=current_date-make_interval(days=>$2-1) AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid)) GROUP BY customer_id HAVING count(*)>=2) q),
+		 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL AND c.created_at>=current_date-make_interval(days=>$2-1) AND ($3::text = '' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=CAST(NULLIF($3::text,'') AS uuid)))))`, tenant, days, branchArg).Scan(&totalCustomers, &periodVisits, &pointsIssued, &pointsRedeemed, &active, &repeatActive, &newCustomers)
 	var previousVisits, previousActive, previousNew, previousIssued int
 	_ = a.db.QueryRow(r.Context(), `SELECT
 	 (SELECT count(*) FROM visits WHERE company_id=$1 AND created_at>=current_date-make_interval(days=>$2*2-1) AND created_at<current_date-make_interval(days=>$2-1)),
