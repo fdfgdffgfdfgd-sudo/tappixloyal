@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -41,6 +42,27 @@ func TestSessionCookiePrefixSeparatesAudiences(t *testing.T) {
 	for role, want := range tests {
 		if got := sessionCookiePrefix(role); got != want {
 			t.Fatalf("sessionCookiePrefix(%q) = %q, want %q", role, got, want)
+		}
+	}
+}
+
+func TestStaffCannotReachOwnerRoutes(t *testing.T) {
+	for _, role := range []string{"employee", "customer", "super_admin"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/owner-only", nil)
+		req = req.WithContext(context.WithValue(req.Context(), identityKey, tokenClaims{Role: role}))
+		res := httptest.NewRecorder()
+		a := &api{}
+		a.requireRoles(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}), "company_owner").ServeHTTP(res, req)
+		if role == "super_admin" {
+			if res.Code != http.StatusForbidden {
+				t.Fatalf("super admin unexpectedly passed company owner guard: %d", res.Code)
+			}
+			continue
+		}
+		if res.Code != http.StatusForbidden {
+			t.Fatalf("role %s passed owner guard: %d", role, res.Code)
 		}
 	}
 }
