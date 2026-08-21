@@ -58,14 +58,17 @@ export function AnalyticsPage() {
   const [liability, setLiability] = useState<BonusLiability | null>(null);
   const [outcomes, setOutcomes] = useState<BusinessOutcomes | null>(null);
   const [period, setPeriod] = useState("month");
+  const [branchId, setBranchId] = useState("");
+  const [branches, setBranches] = useState<{id:string;name:string}[]>([]);
   const [msg, setMsg] = useState("");
   useEffect(() => {
     setData(null);setMsg("");
     const days=period==="week"?7:period==="quarter"?90:30;
-    Promise.all([api<AnalyticsData>(`/analytics?period=${period}`),api<AnalyticsSubscription>("/subscription"),api<BusinessOutcomes>(`/analytics/outcomes?days=${days}`)])
-      .then(([analytics, plan, result]) => {setData(analytics);setSubscription(plan);setOutcomes(result);const normalized=plan.plan.toLowerCase()==="business"||plan.plan.toLowerCase()==="growth"?"growth":plan.plan.toLowerCase();if(normalized==="pro")return Promise.all([api<ProAnalytics>("/analytics/business"),api<BonusLiability>("/analytics/bonus-liability")]).then(([business,bonus])=>{setProData(business);setLiability(bonus)});setProData(null);setLiability(null)})
+    const branchQuery = branchId ? `&branchId=${encodeURIComponent(branchId)}` : "";
+    Promise.all([api<AnalyticsData>(`/analytics?period=${period}${branchQuery}`),api<AnalyticsSubscription>("/subscription"),api<BusinessOutcomes>(`/analytics/outcomes?days=${days}`), branches.length ? Promise.resolve([] as {id:string;name:string}[]) : api<{id:string;name:string}[]>("/branches")])
+      .then(([analytics, plan, result, availableBranches]) => {setData(analytics);setSubscription(plan);setOutcomes(result);if(availableBranches.length)setBranches(availableBranches);const normalized=plan.plan.toLowerCase()==="business"||plan.plan.toLowerCase()==="growth"?"growth":plan.plan.toLowerCase();if(normalized==="pro")return Promise.all([api<ProAnalytics>("/analytics/business"),api<BonusLiability>("/analytics/bonus-liability")]).then(([business,bonus])=>{setProData(business);setLiability(bonus)});setProData(null);setLiability(null)})
       .catch((e) => setMsg(e.message));
-  }, [period]);
+  }, [period, branchId]);
   const tier = subscription?.plan.toLowerCase()==="business"?"growth":subscription?.plan.toLowerCase()||"starter";
   const tierName = tier==="pro"?"Pro":tier==="growth"?"Growth":"Starter";
   const money = (value:number) => `${Math.round(value).toLocaleString("ru-RU")} ₸`;
@@ -85,6 +88,7 @@ export function AnalyticsPage() {
           <option value="month">30 дней</option>
           <option value="quarter">90 дней</option>
         </select>
+        {branches.length > 1 && <select aria-label="Филиал аналитики" value={branchId} onChange={(e) => setBranchId(e.target.value)}><option value="">Все филиалы</option>{branches.map(branch=><option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>}
       </div>
       {data && (
         <>

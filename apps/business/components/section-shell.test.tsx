@@ -60,12 +60,13 @@ describe("SectionShell", () => {
     expect(await screen.findByText("Система работает")).toBeInTheDocument();
   });
 
-  test("offers owner sections only once the role says owner", async () => {
+  test("keeps employees inside Staff Mode and hides owner sections", async () => {
     respondWith({ role: "employee", firstName: "Аслан", lastName: "Ким" });
     renderShell();
 
     expect(await screen.findByText("Аслан Ким")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Клиенты/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Staff Mode/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Клиенты/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Настройки/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Интеграции/ })).not.toBeInTheDocument();
   });

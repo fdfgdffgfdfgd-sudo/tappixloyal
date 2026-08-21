@@ -130,7 +130,9 @@ export function SectionShell({
   // Until the role is confirmed, show only the group both roles share. Rendering
   // the full owner navigation first briefly offered an employee links they
   // cannot use.
-  const visibleItems = !identity ? [items[0]] : identity.role === "employee" ? [items[0]] : items;
+  const visibleItems = !identity ? [items[0]] : identity.role === "employee"
+    ? [["Работа", [["/scanner", Camera, "Staff Mode"]]]] as const
+    : items;
   const commandItems = visibleItems
     .flatMap(([, links]) => links)
     .filter(([, , label]) => label.toLocaleLowerCase("ru-RU").includes(commandQuery.trim().toLocaleLowerCase("ru-RU")));
@@ -139,6 +141,13 @@ export function SectionShell({
     setCommandQuery("");
     requestAnimationFrame(() => commandTrigger.current?.focus());
   }
+  useEffect(() => {
+    // Keep employees inside the operational surface even when they paste an
+    // owner URL directly. The API remains the final authorization boundary.
+    if (identity?.role === "employee" && active !== "/scanner") {
+      window.location.replace("/scanner");
+    }
+  }, [identity, active]);
   async function switchWorkspace(id: string) {
     if (id === current?.id) {
       setMenuOpen(false);
@@ -198,15 +207,17 @@ export function SectionShell({
                   {workspace.current && <i aria-label="Текущее пространство"><Check /></i>}
                 </button>
               ))}
-              <div className="workspace-menu-divider" />
-              <Link href="/settings">
-                <Building2 />
-                Настройки компании
-              </Link>
-              <Link href="/employees">
-                <Users />
-                Пригласить сотрудников
-              </Link>
+              {identity.role !== "employee" && <>
+                <div className="workspace-menu-divider" />
+                <Link href="/settings">
+                  <Building2 />
+                  Настройки компании
+                </Link>
+                <Link href="/employees">
+                  <Users />
+                  Пригласить сотрудников
+                </Link>
+              </>}
               <button
                 className="workspace-logout"
                 onClick={() => void logout()}

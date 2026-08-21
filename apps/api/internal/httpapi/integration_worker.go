@@ -82,7 +82,7 @@ func fanoutOutbox(ctx context.Context, db *pgxpool.Pool) error {
 	}
 	for _, item := range events {
 		_, err = tx.Exec(ctx, `INSERT INTO webhook_deliveries(company_id,endpoint_id,outbox_event_id,event_type,event_id,direction,payload)
-			SELECT $1,id,$2,$3,$2::text,'outbound',$4 FROM webhook_endpoints
+			SELECT $1::uuid,id,$2::uuid,$3::varchar,$2::text,'outbound',$4::jsonb FROM webhook_endpoints
 			WHERE company_id=$1 AND direction='outbound' AND status='active' AND deleted_at IS NULL
 			AND (cardinality(event_types)=0 OR $3=ANY(event_types)) ON CONFLICT DO NOTHING`, item.companyID, item.id, item.eventType, item.payload)
 		if err != nil {
