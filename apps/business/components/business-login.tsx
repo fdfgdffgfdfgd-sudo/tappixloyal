@@ -37,7 +37,9 @@ export function BusinessLogin() {
 		const result = await request("/auth/login", credentials);
 		if(result.mfaRequired){setPendingCredentials({email:String(fields.email||pendingCredentials.email),password:String(fields.password||pendingCredentials.password)});setMfaChallenge(result.mfaChallenge);setMsg("Введите код из приложения-аутентификатора");return}
 		if(result.mfaSetupRequired){const setup=await request("/auth/mfa/setup?aud=platform",{},"platform");setMfaSetup(setup);setMsg("");return}
-		router.replace(result.user.role === "super_admin" ? "/admin" : "/");
+		// Employees work at the counter; send them directly to the focused
+		// Staff Mode instead of exposing the owner dashboard navigation.
+		router.replace(result.user.role === "super_admin" ? "/admin" : result.user.role === "employee" ? "/scanner" : "/");
     } catch (error) { setMsg(error instanceof Error ? error.message : "Не удалось войти"); } finally { setLoading(false); }
   }
   async function enableMfa(e:FormEvent<HTMLFormElement>){e.preventDefault();setLoading(true);setMsg("");setMsgIsSuccess(false);try{const code=String(new FormData(e.currentTarget).get("code")||"");await request("/auth/mfa/enable?aud=platform",{code},"platform");router.replace("/admin")}catch(error){setMsg(error instanceof Error?error.message:"Не удалось включить MFA")}finally{setLoading(false)}}
