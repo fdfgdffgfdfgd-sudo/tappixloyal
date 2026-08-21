@@ -65,7 +65,7 @@ export function AnalyticsPage() {
     setData(null);setMsg("");
     const days=period==="week"?7:period==="quarter"?90:30;
     const branchQuery = branchId ? `&branchId=${encodeURIComponent(branchId)}` : "";
-    Promise.all([api<AnalyticsData>(`/analytics?period=${period}${branchQuery}`),api<AnalyticsSubscription>("/subscription"),api<BusinessOutcomes>(`/analytics/outcomes?days=${days}`), branches.length ? Promise.resolve([] as {id:string;name:string}[]) : api<{id:string;name:string}[]>("/branches")])
+    Promise.all([api<AnalyticsData>(`/analytics?period=${period}${branchQuery}`),api<AnalyticsSubscription>("/subscription"),api<BusinessOutcomes>(`/analytics/outcomes?days=${days}${branchId ? `&branchId=${encodeURIComponent(branchId)}` : ""}`), branches.length ? Promise.resolve([] as {id:string;name:string}[]) : api<{id:string;name:string}[]>("/branches")])
       .then(([analytics, plan, result, availableBranches]) => {setData(analytics);setSubscription(plan);setOutcomes(result);if(availableBranches.length)setBranches(availableBranches);const normalized=plan.plan.toLowerCase()==="business"||plan.plan.toLowerCase()==="growth"?"growth":plan.plan.toLowerCase();if(normalized==="pro")return Promise.all([api<ProAnalytics>("/analytics/business"),api<BonusLiability>("/analytics/bonus-liability")]).then(([business,bonus])=>{setProData(business);setLiability(bonus)});setProData(null);setLiability(null)})
       .catch((e) => setMsg(e.message));
   }, [period, branchId]);

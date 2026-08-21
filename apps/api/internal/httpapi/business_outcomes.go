@@ -3,15 +3,20 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 func (a *api) businessOutcomes(w http.ResponseWriter, r *http.Request) {
 	days := normalizedOutcomeDays(r.URL.Query().Get("days"))
+	branch := strings.TrimSpace(r.URL.Query().Get("branchId"))
+	if len(branch) != 36 || strings.Count(branch, "-") != 4 {
+		branch = ""
+	}
 	tenant := companyID(r)
 	var returnedCustomers, repeatVisits int
-	err := a.db.QueryRow(r.Context(), `SELECT count(DISTINCT customer_id) FROM customer_events WHERE company_id=$1 AND event_type='customer.returned' AND NOT sandbox AND occurred_at>=now()-make_interval(days=>$2)`, tenant, days).Scan(&returnedCustomers)
+	err := a.db.QueryRow(r.Context(), `SELECT count(DISTINCT customer_id) FROM customer_events WHERE company_id=$1 AND event_type='customer.returned' AND NOT sandbox AND occurred_at>=now()-make_interval(days=>$2) AND ($3='' OR branch_id=nullif($3,'')::uuid)`, tenant, days, branch).Scan(&returnedCustomers)
 	if err == nil {
-		err = a.db.QueryRow(r.Context(), `WITH ranked AS (SELECT customer_id,occurred_at,row_number() OVER(PARTITION BY customer_id ORDER BY occurred_at,id) n FROM customer_events WHERE company_id=$1 AND event_type='visit.completed' AND NOT sandbox) SELECT count(*) FROM ranked WHERE n>=2 AND occurred_at>=now()-make_interval(days=>$2)`, tenant, days).Scan(&repeatVisits)
+		err = a.db.QueryRow(r.Context(), `WITH ranked AS (SELECT customer_id,occurred_at,row_number() OVER(PARTITION BY customer_id ORDER BY occurred_at,id) n FROM customer_events WHERE company_id=$1 AND event_type='visit.completed' AND NOT sandbox AND ($3='' OR branch_id=nullif($3,'')::uuid)) SELECT count(*) FROM ranked WHERE n>=2 AND occurred_at>=now()-make_interval(days=>$2)`, tenant, days, branch).Scan(&repeatVisits)
 	}
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось рассчитать возвращаемость")
@@ -21,10 +26,10 @@ func (a *api) businessOutcomes(w http.ResponseWriter, r *http.Request) {
 	var automationMessages, automationCustomers, automationReturned int
 	var automationRevenue float64
 	err = a.db.QueryRow(r.Context(), `WITH sent AS (
-		SELECT customer_id,min(occurred_at) sent_at,count(*) messages FROM customer_events WHERE company_id=$1 AND event_type='campaign.sent' AND source='automation' AND NOT sandbox AND occurred_at>=now()-make_interval(days=>$2) GROUP BY customer_id
+		SELECT customer_id,min(occurred_at) sent_at,count(*) messages FROM customer_events WHERE company_id=$1 AND event_type='campaign.sent' AND source='automation' AND NOT sandbox AND occurred_at>=now()-make_interval(days=>$2) AND ($3='' OR branch_id=nullif($3,'')::uuid) GROUP BY customer_id
 	), purchases AS (
-		SELECT s.customer_id,sum(t.net_amount) revenue FROM sent s JOIN sales_transactions t ON t.company_id=$1 AND t.customer_id=s.customer_id AND t.status='completed' AND NOT t.sandbox AND t.occurred_at>=s.sent_at AND t.occurred_at<=s.sent_at+interval '30 days' GROUP BY s.customer_id
-	) SELECT coalesce(sum(s.messages),0),count(s.customer_id),count(p.customer_id),coalesce(sum(p.revenue),0) FROM sent s LEFT JOIN purchases p ON p.customer_id=s.customer_id`, tenant, days).Scan(&automationMessages, &automationCustomers, &automationReturned, &automationRevenue)
+		SELECT s.customer_id,sum(t.net_amount) revenue FROM sent s JOIN sales_transactions t ON t.company_id=$1 AND t.customer_id=s.customer_id AND t.status='completed' AND NOT t.sandbox AND t.occurred_at>=s.sent_at AND t.occurred_at<=s.sent_at+interval '30 days' AND ($3='' OR t.branch_id=nullif($3,'')::uuid) GROUP BY s.customer_id
+	) SELECT coalesce(sum(s.messages),0),count(s.customer_id),count(p.customer_id),coalesce(sum(p.revenue),0) FROM sent s LEFT JOIN purchases p ON p.customer_id=s.customer_id`, tenant, days, branch).Scan(&automationMessages, &automationCustomers, &automationReturned, &automationRevenue)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось рассчитать результат автоматизаций")
 		return
@@ -46,7 +51,7 @@ func (a *api) businessOutcomes(w http.ResponseWriter, r *http.Request) {
 	var rewardRedemptions int
 	_ = a.db.QueryRow(r.Context(), `SELECT d.name,count(*) FROM customer_rewards cr JOIN reward_definitions d ON d.id=cr.definition_id AND d.company_id=cr.company_id WHERE cr.company_id=$1 AND cr.status='redeemed' AND cr.redeemed_at>=now()-make_interval(days=>$2) GROUP BY d.id,d.name ORDER BY count(*) DESC,d.name LIMIT 1`, tenant, days).Scan(&rewardName, &rewardRedemptions)
 	var memberRevenue, attributedCampaignRevenue float64
-	_ = a.db.QueryRow(r.Context(), `SELECT coalesce(sum(net_amount),0) FROM sales_transactions WHERE company_id=$1 AND customer_id IS NOT NULL AND status='completed' AND NOT sandbox AND occurred_at>=now()-make_interval(days=>$2)`, tenant, days).Scan(&memberRevenue)
+	_ = a.db.QueryRow(r.Context(), `SELECT coalesce(sum(net_amount),0) FROM sales_transactions WHERE company_id=$1 AND customer_id IS NOT NULL AND status='completed' AND NOT sandbox AND occurred_at>=now()-make_interval(days=>$2) AND ($3='' OR branch_id=nullif($3,'')::uuid)`, tenant, days, branch).Scan(&memberRevenue)
 	_ = a.db.QueryRow(r.Context(), `SELECT coalesce(sum(conversion_value),0) FROM campaign_conversions WHERE company_id=$1 AND conversion_type='purchased' AND occurred_at>=now()-make_interval(days=>$2)`, tenant, days).Scan(&attributedCampaignRevenue)
 
 	var previousReturned, previousAutomationReturned, previousReferralCustomers, previousRewardRedemptions int
