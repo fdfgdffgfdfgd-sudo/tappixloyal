@@ -1,0 +1,8 @@
+[Unit]
+Description=Tappix PostgreSQL production backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/tappix
+EnvironmentFile=/opt/tappix/.env.production
+ExecStart=/bin/sh /opt/tappix/infrastructure/scripts/backup-production.sh

@@ -1,0 +1,33 @@
+groups:
+  - name: tappix
+    rules:
+      - alert: TappixAPIDown
+        expr: up{job="tappix-api"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Tappix API metrics endpoint is unavailable"}
+      - alert: TappixAPI5xx
+        expr: sum(increase(tappix_http_requests_total{status_class="5xx"}[5m])) > 5
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "Tappix API is returning elevated 5xx responses"}
+      - alert: TappixWorkersNotReady
+        expr: tappix_workers_ready == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "Tappix background workers are not ready"}
+      - alert: TappixDependencyDown
+        expr: tappix_dependency_up == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "A required Tappix dependency is unavailable"}
+      - alert: TappixAPILatencyHigh
+        expr: sum(rate(tappix_http_request_duration_seconds_sum[5m])) / sum(rate(tappix_http_requests_total[5m])) > 1
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Tappix average API latency is above one second"}
+      - alert: TappixIntegrationFailures
+        expr: tappix_integration_jobs_failed_last_hour > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "Tappix integration jobs are failing"}

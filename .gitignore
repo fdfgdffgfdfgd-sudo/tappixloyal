@@ -7,7 +7,9 @@ dist
 *.log
 .env.*
 !.env.example
+!.env.production.example
+infrastructure/secrets/
 backups/
 test-results/
 playwright-report/
-shots*/
+shots*/

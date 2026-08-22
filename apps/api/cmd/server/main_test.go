@@ -15,7 +15,9 @@ func productionDefaults() map[string]string {
 		"JWT_SECRET":                 "d1f4a7b0c3e6h9k2m5p8s1v4y7B0E3H6",
 		"INTEGRATION_ENCRYPTION_KEY": "a7c4e1f8b5d2g9h6k3m0p7s4v1y8B5E2",
 		"REDIS_ADDR":                 "redis.internal:6379",
+		"REDIS_PASSWORD":             "7uV4mX9qK2pL8sN5",
 		"APP_URL":                    "https://app.tappix.kz",
+		"WEB_ORIGIN":                 "https://app.tappix.kz",
 		"SMTP_HOST":                  "smtp.example.com",
 		"SMTP_FROM":                  "Tappix <noreply@tappix.kz>",
 		"SMTP_USERNAME":              "tappix",
@@ -26,6 +28,7 @@ func productionDefaults() map[string]string {
 		"WHATSAPP_APP_SECRET":        "app-secret",
 		"WHATSAPP_VERIFY_TOKEN":      "verify-token",
 		"METRICS_TOKEN":              "metrics-token",
+		"RELEASE_SHA":                "0123456789abcdef0123456789abcdef01234567",
 		"OTP_DEV_MODE":               "false",
 	}
 }
@@ -60,10 +63,13 @@ func TestProductionGuards(t *testing.T) {
 		{"signing secret still says change", "JWT_SECRET", "please-change-this-value-before-launch", "JWT_SECRET"},
 		{"database keeps the local password", "DATABASE_URL", "postgres://tappix:tappix_local@db:5432/tappix", "DATABASE_URL"},
 		{"public address is not HTTPS", "APP_URL", "http://app.tappix.kz", "APP_URL"},
+		{"CORS origin differs", "WEB_ORIGIN", "https://other.tappix.kz", "WEB_ORIGIN"},
 		{"metrics token missing", "METRICS_TOKEN", "", "METRICS_TOKEN"},
 		{"database url missing", "DATABASE_URL", "", "DATABASE_URL"},
 		{"integration key missing", "INTEGRATION_ENCRYPTION_KEY", "", "INTEGRATION_ENCRYPTION_KEY"},
-		{"whatsapp token missing", "WHATSAPP_ACCESS_TOKEN", "", "WHATSAPP_ACCESS_TOKEN"},
+		{"whatsapp token missing from partial configuration", "WHATSAPP_ACCESS_TOKEN", "", "WHATSAPP_ACCESS_TOKEN"},
+		{"release identity missing", "RELEASE_SHA", "", "RELEASE_SHA"},
+		{"demo redis password", "REDIS_PASSWORD", "Tappix2026!", "REDIS_PASSWORD"},
 	}
 
 	for _, c := range cases {
@@ -78,6 +84,16 @@ func TestProductionGuards(t *testing.T) {
 				t.Fatalf("error does not name %s, operator cannot act on it: %v", c.want, err)
 			}
 		})
+	}
+}
+
+func TestExternalProvidersMayBeDisabledInProduction(t *testing.T) {
+	values := productionDefaults()
+	for _, key := range []string{"SMTP_HOST", "SMTP_FROM", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_TLS", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"} {
+		values[key] = ""
+	}
+	if err := validateEnvironment(lookup(values)); err != nil {
+		t.Fatalf("production core should start while providers await credentials: %v", err)
 	}
 }
 

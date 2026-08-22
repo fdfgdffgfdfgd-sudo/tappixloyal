@@ -259,7 +259,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 func (a *api) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	checks := map[string]string{"postgres": "ok", "redis": "ok"}
+	checks := map[string]string{"postgres": "ok", "redis": "ok", "workers": "starting", "schema": "unknown"}
 	ready := true
 	if err := a.db.Ping(ctx); err != nil {
 		checks["postgres"] = "unavailable"
@@ -269,11 +269,27 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 		checks["redis"] = "unavailable"
 		ready = false
 	}
+	var migrationVersion string
+	if err := a.db.QueryRow(ctx, `SELECT coalesce(max(version),'none') FROM schema_migrations`).Scan(&migrationVersion); err != nil {
+		checks["schema"] = "unavailable"
+		ready = false
+	} else {
+		checks["schema"] = migrationVersion
+	}
+	if workersReady.Load() {
+		checks["workers"] = "ok"
+	} else {
+		ready = false
+	}
+	release := strings.TrimSpace(os.Getenv("RELEASE_SHA"))
+	if release == "" {
+		release = "development"
+	}
 	if !ready {
-		write(w, http.StatusServiceUnavailable, envelope{Success: false, Data: map[string]any{"status": "degraded", "checks": checks, "time": time.Now().UTC()}})
+		write(w, http.StatusServiceUnavailable, envelope{Success: false, Data: map[string]any{"status": "degraded", "checks": checks, "release": release, "migrationVersion": migrationVersion, "time": time.Now().UTC()}})
 		return
 	}
-	write(w, 200, envelope{Success: true, Data: map[string]any{"status": "ok", "checks": checks, "time": time.Now().UTC()}})
+	write(w, 200, envelope{Success: true, Data: map[string]any{"status": "ok", "checks": checks, "release": release, "migrationVersion": migrationVersion, "time": time.Now().UTC()}})
 }
 
 func (a *api) dashboard(w http.ResponseWriter, r *http.Request) {

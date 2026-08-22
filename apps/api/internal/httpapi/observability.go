@@ -92,6 +92,11 @@ func (w *responseTelemetry) Write(body []byte) (int, error) {
 var requestMetrics sync.Map
 var requestDurationMicros sync.Map
 var activeRequests atomic.Int64
+var workersReady atomic.Bool
+
+// MarkWorkersReady exposes the embedded worker subsystem to health checks and
+// monitoring without creating a second control plane.
+func MarkWorkersReady() { workersReady.Store(true) }
 
 func metricCounter(key string) *atomic.Uint64 {
 	value, _ := requestMetrics.LoadOrStore(key, &atomic.Uint64{})
@@ -145,6 +150,22 @@ func (a *api) metrics(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "tappix_http_request_duration_seconds_sum{method=%q,route=%q} %.6f\n", parts[0], parts[1], float64(value.(*atomic.Uint64).Load())/1_000_000)
 	}
 	fmt.Fprintf(w, "# HELP tappix_http_requests_active Current active HTTP requests.\n# TYPE tappix_http_requests_active gauge\ntappix_http_requests_active %d\n", activeRequests.Load())
+	fmt.Fprintf(w, "# HELP tappix_workers_ready Whether embedded background workers completed startup.\n# TYPE tappix_workers_ready gauge\ntappix_workers_ready %d\n", boolMetric(workersReady.Load()))
+	postgresUp := a.db.Ping(r.Context()) == nil
+	redisUp := a.redis.Ping(r.Context()).Err() == nil
+	fmt.Fprintf(w, "# HELP tappix_dependency_up Whether a required dependency is available.\n# TYPE tappix_dependency_up gauge\ntappix_dependency_up{dependency=%q} %d\ntappix_dependency_up{dependency=%q} %d\n", "postgres", boolMetric(postgresUp), "redis", boolMetric(redisUp))
+	var failedJobs, queuedJobs int
+	if err := a.db.QueryRow(r.Context(), `SELECT count(*) FILTER (WHERE status='failed' AND created_at>now()-interval '1 hour'), count(*) FILTER (WHERE status IN('pending','processing')) FROM integration_jobs`).Scan(&failedJobs, &queuedJobs); err == nil {
+		fmt.Fprintf(w, "# HELP tappix_integration_jobs_failed_last_hour Failed integration jobs created in the last hour.\n# TYPE tappix_integration_jobs_failed_last_hour gauge\ntappix_integration_jobs_failed_last_hour %d\n", failedJobs)
+		fmt.Fprintf(w, "# HELP tappix_integration_jobs_pending Pending integration jobs.\n# TYPE tappix_integration_jobs_pending gauge\ntappix_integration_jobs_pending %d\n", queuedJobs)
+	}
+}
+
+func boolMetric(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func logDomainEvent(r *http.Request, eventType, customerID string, attributes ...any) {
