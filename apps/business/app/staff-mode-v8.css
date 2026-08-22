@@ -24,6 +24,11 @@
 .staff-confirm-dialog > div button:last-child { border-color: var(--accent); background: var(--accent); color: #fff; }
 .staff-confirm-close { position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; display: grid; place-items: center; }
 .staff-confirm-close svg { width: 20px; }
+@media (max-width: 620px) {
+  .staff-fast-actions { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 8; margin: 12px -4px 0; padding: 8px; border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffffed; box-shadow: 0 10px 28px #0f172a1c; backdrop-filter: blur(10px); }
+  .staff-fast-actions button { min-height: 48px; font-size: 14px; }
+  .confirm-visit { min-height: 58px; font-size: 16px; }
+}
 @media (max-width: 420px) {
   .staff-confirm-dialog { padding: 24px 18px 18px; }
   .staff-confirm-dialog > div { grid-template-columns: 1fr; }
