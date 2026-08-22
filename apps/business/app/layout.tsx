@@ -52,6 +52,7 @@ import "./risk-center.css";
 import "./product-polish-v10.css";
 import "./confirm-dialog.css";
 import "./auth-gate.css";
+import "./product-redesign-v11.css";
 
 export const metadata: Metadata = { title: "Tappix — бизнес-панель", description: "Управление клиентами и программой лояльности" };
 

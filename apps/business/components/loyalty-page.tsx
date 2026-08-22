@@ -96,6 +96,7 @@ export function LoyaltyPage() {
       active="/loyalty"
       title="Программа лояльности"
       subtitle="Настройте начисления и награды без разработчика"
+      className="loyalty-page-v11"
     >
       <Notice text={msg} />
       <div className="loyalty-workspace-panel"><ProgramMechanics />

@@ -113,7 +113,7 @@ export function CustomersPage() {
     <SectionShell
       active="/customers"
       title="Клиенты"
-      subtitle="CRM вашей компании"
+      subtitle="Все клиенты, их прогресс и последние визиты — в одном месте"
     >
       <Notice text={msg} />
       {error && <div className="crm-error" role="alert"><span><AlertTriangle/><strong>Не удалось загрузить клиентов</strong><small>{error}</small></span><button onClick={() => void load()}><RefreshCw/>Повторить</button></div>}

@@ -68,11 +68,13 @@ export function SectionShell({
   active,
   title,
   subtitle,
+  className,
   children,
 }: {
   active: string;
   title: string;
   subtitle: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -169,7 +171,7 @@ export function SectionShell({
     return <main className="session-check session-check-error"><strong>Не удалось подтвердить вход</strong><p>Войдите снова или повторите проверку.</p><div><a href="/login">Войти</a><button onClick={() => location.reload()}>Повторить</button></div></main>;
   }
   return (
-    <div className="product-shell">
+    <div className={`product-shell role-${identity.role}`} data-role={identity.role}>
       <a className="skip" href="#main-content">К содержанию</a>
       <aside className={`product-sidebar ${navOpen ? "is-open" : ""}`}>
         <div className="product-brand"><Image className="product-mark" src="/tappix-mark.png" alt="" aria-hidden width={30} height={30} priority/><strong>Tappix</strong><button aria-label="Закрыть меню" onClick={() => setNavOpen(false)}><X/></button></div>
@@ -238,7 +240,7 @@ export function SectionShell({
           {unreachable ? "Нет связи с сервером" : identity ? "Система работает" : "Проверяем соединение…"}
         </div>
       </aside>
-      <main className="product-main">
+      <main className={`product-main ${className || ""}`.trim()}>
         <PageHeader eyebrow={current?.name || "Рабочее пространство"} title={title} subtitle={subtitle} leading={<button className="product-menu-toggle" aria-label="Открыть меню" onClick={() => setNavOpen(true)}><Menu/></button>} actions={<div className="product-user">
             <button ref={commandTrigger} className="product-command" onClick={() => setCommandOpen(true)}><Search/><span>Найти</span><kbd>⌘ K</kbd></button>
             <Link className="header-scanner" href="/scanner"><Camera/>Сканер</Link>
