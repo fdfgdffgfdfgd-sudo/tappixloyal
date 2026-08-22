@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build and start the stack
-        run: docker compose up -d postgres redis mailpit
+        run: docker compose up -d --wait postgres redis mailpit
 
       - name: Apply database migrations
         run: TAPPIX_SEED_DEMO=1 npm run db:migrate
@@ -116,7 +116,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build and start the stack
-        run: docker compose up -d postgres redis mailpit
+        run: docker compose up -d --wait postgres redis mailpit
 
       - name: Apply database migrations
         run: TAPPIX_SEED_DEMO=1 npm run db:migrate
