@@ -5,6 +5,7 @@ import { RewardBuilder } from "./reward-builder";
 import { ProgramMechanics } from "./program-mechanics";
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
+import { OwnerContext } from "./owner-ux-primitives";
 import Link from "next/link";
 import { Loyalty, Notice } from "./management-shared";
 
@@ -99,6 +100,7 @@ export function LoyaltyPage() {
       className="loyalty-page-v11"
     >
       <Notice text={msg} />
+      <OwnerContext label="КОНФИГУРАЦИЯ ПРОГРАММЫ" title="Сначала выберите причину возвращаться" detail="Настройка разбита на механику, условия, награду и запуск — без технических терминов." />
       <div className="loyalty-config-layout"><div className="loyalty-workspace-panel"><ProgramMechanics />
         <section className="loyalty-launch-path"><header><div><small>ПОСЛЕ ПУБЛИКАЦИИ</small><h2>Три шага до первых результатов</h2></div></header><div className="loyalty-next-actions">
           <Link href="/devices"><b>1</b><QrCode/><span><strong>Разместите QR или NFC</strong><small>Клиент откроет и сохранит карту</small></span></Link>

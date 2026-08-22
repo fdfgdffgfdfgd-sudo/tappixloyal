@@ -6,6 +6,7 @@ import { customerLevelLabel } from "@/lib/labels";
 import { SectionShell } from "./section-shell";
 import Link from "next/link";
 import { Customer, Branch, Notice } from "./management-shared";
+import { CustomerMobileCard } from "./owner-ux-primitives";
 
 export function CustomersPage() {
   const [items, setItems] = useState<Customer[]>([]);
@@ -252,9 +253,7 @@ export function CustomersPage() {
         )}
       </div>
       {!loading && !!items.length && <section className="customer-mobile-list" aria-label="Клиенты на мобильном устройстве">
-        {items.map((c) => <Link className="customer-mobile-row" href={`/customers/${c.id}`} key={`mobile-${c.id}`}>
-          <span className="customer-mobile-avatar">{c.firstName.slice(0, 1)}</span><span className="customer-mobile-main"><strong>{c.firstName} {c.lastName}</strong><small>{c.phone} · {customerLevelLabel(c.level)}</small><span><b>{c.totalVisits} посещений</b><em>{c.totalPoints} бонусов</em></span></span><span aria-hidden="true">›</span>
-        </Link>)}
+        {items.map((c) => <CustomerMobileCard id={c.id} name={`${c.firstName} ${c.lastName}`} phone={c.phone} level={customerLevelLabel(c.level)} visits={c.totalVisits} points={c.totalPoints} key={`mobile-${c.id}`} />)}
       </section>}
       {!error && <nav className="crm-pagination" aria-label="Пагинация клиентов">
         <span>Найдено: {total}</span>

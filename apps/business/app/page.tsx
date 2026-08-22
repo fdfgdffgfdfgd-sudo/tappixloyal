@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, BarChart3, Check, CircleDot, Gift, Lightbulb
 import { api } from "@/lib/api";
 import { SectionShell } from "@/components/section-shell";
 import { useDialogFocusTrap } from "@/components/use-dialog-focus-trap";
+import { OwnerContext } from "@/components/owner-ux-primitives";
 
 type DashboardData = { customers:number; visitsToday:number; bonusIssued:number; bonusRedeemed:number; registrations:number; repeatCustomers:number; rewardsIssued:number; nfcConversion:number; latestCustomers:{id:string;name:string;phone:string;points:number;createdAt:string}[]; latestVisits:{id:string;customer:string;branch:string;points:number;createdAt:string}[]; onboarding:Record<string,boolean> };
 type Customer = { id:string; firstName:string; lastName:string; phone:string };
@@ -43,7 +44,7 @@ export default function Dashboard(){
    {error&&<div className="dashboard-load-error" role="alert"><AlertTriangle/><span><strong>Не удалось загрузить обзор</strong><small>{error}</small></span><button onClick={()=>void load()}><RefreshCw/>Повторить</button></div>}
    {!loading&&!error&&<>
    {message&&<div className="v2-notice" role="status">{message}</div>}
-   <section className="overview-context-bar"><div><small>РАБОЧИЙ КОНТЕКСТ</small><strong>Сегодня в программе</strong><span>{branches.length ? `${branches.length} ${branches.length === 1 ? "филиал" : "филиала"} · данные обновляются автоматически` : "Добавьте первый филиал, чтобы начать"}</span></div><Link href="/analytics">Открыть аналитику <ArrowRight/></Link></section>
+   <OwnerContext label="РАБОЧИЙ КОНТЕКСТ" title="Сегодня в программе" detail={branches.length ? `${branches.length} ${branches.length === 1 ? "филиал" : "филиала"} · данные обновляются автоматически` : "Добавьте первый филиал, чтобы начать"} href="/analytics" action="Открыть аналитику" />
    {!launched&&<section className="onboarding-card guided-dashboard-card"><div className="onboarding-head"><div><span><Sparkles/></span><div><small>БЫСТРЫЙ ЗАПУСК</small><h2>Подготовьте программу к первому гостю</h2><p>{completed} из {steps.length} шагов выполнено · следующий шаг займёт несколько минут</p></div></div><Link className="guided-launch-link" href={steps.find(([key])=>!data.onboarding[key])?.[2]||"/onboarding"}>Продолжить<ArrowRight/></Link></div><div className="progress" role="progressbar" aria-label="Прогресс запуска" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={completed}><i style={{width:`${completed/steps.length*100}%`}}/></div><div className="onboarding-steps">{steps.map(([key,label,href],index)=><Link className={data.onboarding[key]?"done":index===completed?"current":""} href={href} key={key}>{data.onboarding[key]?<Check/>:<span>{index+1}</span>}<span>{label}</span><ArrowRight/></Link>)}</div><footer><Lightbulb/><p>После тестового посещения этот блок исчезнет, и здесь появится рабочая аналитика.</p></footer></section>}
    {launched&&<>
    <div className="v2-hero"><div><span>Сегодня</span><h2>Всё готово для следующего гостя</h2><p>Сканируйте карту, отмечайте визит — Tappix сам обновит бонусы, штампы или скидку.</p></div><Link className="dashboard-scan" href="/scanner"><Nfc/>Открыть сканер</Link></div>

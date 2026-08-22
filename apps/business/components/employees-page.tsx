@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import { Branch, Notice } from "./management-shared";
 import { useConfirm } from "./use-confirm";
+import { StaffStatus } from "./owner-ux-primitives";
 
 type Employee = {
   id: string;
@@ -84,65 +85,12 @@ export function EmployeesPage() {
       subtitle="Доступы команды и привязка к филиалам"
     >
       <Notice text={msg} />
-      <div className="toolbar">
-        <span>{items.length} пользователей</span>
-        <button className="primary-action" onClick={() => setOpen(true)}>
-          <Plus />
-          Добавить сотрудника
-        </button>
-      </div>
-      <div className="data-card">
-        <table>
-          <thead>
-            <tr>
-              <th>Сотрудник</th>
-              <th>Email</th>
-              <th>Роль</th>
-              <th>Филиал</th>
-              <th>Статус</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((x) => (
-              <tr key={x.id}>
-                <td>
-                  <strong>
-                    {x.firstName} {x.lastName}
-                  </strong>
-                </td>
-                <td>{x.email}</td>
-                <td>
-                  <span className="tag">{x.role}</span>
-                </td>
-                <td>{x.branch || "Все филиалы"}</td>
-                <td>{x.status}</td>
-                <td>
-                  <div className="row-actions">
-                    {x.role === "employee" && (
-                      <>
-                        <button
-                          aria-label="Редактировать сотрудника"
-                          onClick={() => setEditing(x)}
-                        >
-                          <Pencil />
-                        </button>
-                        <button
-                          aria-label="Удалить сотрудника"
-                          className="danger-icon"
-                          onClick={() => remove(x.id)}
-                        >
-                          <Trash2 />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <section className="team-command-bar"><div><small>КОМАНДА</small><h2>{items.length} сотрудников имеют доступ</h2><p>Роль и филиал определяют, что видит каждый человек в Tappix.</p></div><button className="primary-action" onClick={() => setOpen(true)}><Plus />Добавить сотрудника</button></section>
+      <section className="team-list" aria-label="Список сотрудников">
+        <header><span>Сотрудник</span><span>Роль</span><span>Филиал</span><span>Доступ</span><span /></header>
+        {items.length === 0 && <div className="team-empty"><strong>Команда пока пустая</strong><p>Добавьте первого сотрудника, чтобы работать с клиентами у кассы.</p><button className="primary-action" onClick={() => setOpen(true)}>Добавить сотрудника</button></div>}
+        {items.map((x) => <article className="team-member" key={x.id}><div className="team-member-identity"><span>{x.firstName.slice(0, 1)}</span><div><strong>{x.firstName} {x.lastName}</strong><small>{x.email}</small></div></div><span className="tag">{x.role === "employee" ? "Сотрудник" : x.role}</span><span>{x.branch || "Все филиалы"}</span><StaffStatus active={x.status === "active"} /><div className="row-actions">{x.role === "employee" && <><button aria-label="Редактировать сотрудника" onClick={() => setEditing(x)}><Pencil /></button><button aria-label="Удалить сотрудника" className="danger-icon" onClick={() => remove(x.id)}><Trash2 /></button></>}</div></article>)}
+      </section>
       {open && (
         <div className="sheet-bg">
           <form className="sheet" onSubmit={create}>

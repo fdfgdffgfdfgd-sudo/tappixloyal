@@ -4,6 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import { Notice } from "./management-shared";
+import { OwnerContext } from "./owner-ux-primitives";
 
 type CompanySettings = {
   name: string;
@@ -70,8 +71,8 @@ export function SettingsPage() {
       subtitle="Основные данные компании"
     >
       <Notice text={msg} />
-      <form className="settings-card" onSubmit={save}>
-        <div className="form-grid">
+      <OwnerContext label="РАБОЧЕЕ ПРОСТРАНСТВО" title="Настройки бизнеса" detail="Соберите компанию, безопасность и оплату в понятные разделы." href="/subscription" action="Тариф и оплата" />
+      <div className="settings-layout"><nav className="settings-nav" aria-label="Разделы настроек"><a className="active" href="#company">Компания</a><a href="#security">Безопасность</a><a href="/subscription">Тариф и оплата</a></nav><div className="settings-sections"><form id="company" className="settings-card settings-section" onSubmit={save}><header><div><small>КОМПАНИЯ</small><h2>Как клиенты видят бизнес</h2><p>Эти данные используются в карте клиента и уведомлениях.</p></div></header><div className="form-grid">
           {Object.entries(value).map(([key, val]) => (
             <label key={key}>
               {
@@ -92,10 +93,8 @@ export function SettingsPage() {
               />
             </label>
           ))}
-        </div>
-        <button className="primary-action">Сохранить</button>
-      </form>
-      <div className="settings-card session-card">
+        </div><footer><button className="primary-action">Сохранить изменения</button></footer></form>
+      <section id="security" className="settings-card session-card settings-section">
         <div className="settings-title">
           <span>
             <ShieldCheck />
@@ -127,7 +126,7 @@ export function SettingsPage() {
             </div>
           ))
         )}
-      </div>
+      </section></div></div>
     </SectionShell>
   );
 }

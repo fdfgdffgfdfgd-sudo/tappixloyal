@@ -5,6 +5,7 @@ import { Clock3, Gift, ShieldCheck, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import { customerLevelLabel } from "@/lib/labels";
 import { SectionShell } from "./section-shell";
+import { OwnerContext } from "./owner-ux-primitives";
 import { Customer, Branch, Notice } from "./management-shared";
 import { useConfirm } from "./use-confirm";
 
@@ -205,7 +206,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
       subtitle={value.phone}
     >
       <Notice text={msg} />
-      <section className="customer-command-center"><div className="customer-identity-block"><span className="customer-avatar-large">{value.firstName.slice(0,1)}</span><div><small>КЛИЕНТ В ПРОГРАММЕ</small><h2>{value.firstName} {value.lastName}</h2><p>{value.phone} · {customerSegment}</p></div></div><div className="customer-command-actions"><button className="primary-action" onClick={() => setBonus("credit")}>Начислить бонусы</button><button onClick={() => setBonus("debit")}>Списать</button><button onClick={archive}>Архивировать</button></div></section>
+      <OwnerContext label="КЛИЕНТ В ПРОГРАММЕ" title={`${value.firstName} ${value.lastName}`} detail={`${value.phone} · ${customerSegment}`} />
       <div className="customer-summary">
         <article>
           <span>Баланс</span>
