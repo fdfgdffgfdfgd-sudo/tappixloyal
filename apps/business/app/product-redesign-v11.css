@@ -1,16 +1,186 @@
 /* Product redesign foundation: one quiet visual language across owner, staff and wallet. */
-:root{--t11-blue:#0082d2;--t11-blue-hover:#006fb4;--t11-bg:#f5f5f7;--t11-surface:#fff;--t11-text:#1d1d1f;--t11-muted:#6e6e73;--t11-line:#e5e5ea;--t11-radius:16px;--t11-shadow:0 10px 30px rgba(0,0,0,.055)}
-body{background:var(--t11-bg);color:var(--t11-text)}
-.product-main{background:var(--t11-bg)}.product-main.analytics-page-v11,.product-main.loyalty-page-v11,.product-main.integrations-page-v11{padding-top:30px}.product-main>header{background:rgba(245,245,247,.9);border-bottom:1px solid var(--t11-line);backdrop-filter:blur(20px)}
-.product-main h1,.product-main h2,.product-main h3{letter-spacing:-.035em}.product-main>section{max-width:1520px}
-.data-card,.entity-card,.module-card,.automation-card,.current-plan-card,.mvp-settings-card,.mvp-extension-catalog,.mvp-principle,.crm-filter-panel,.mechanics-studio,.analytics-chart,.analytics-segments,.analytics-top,.loyalty-economy,.scanner-main,.scan-result,.business-outcomes,.analytics-answer{border:1px solid var(--t11-line)!important;border-radius:var(--t11-radius)!important;box-shadow:var(--t11-shadow)!important}
-.primary,.primary-action,.mechanics-save,.confirm-visit,.scanner-placeholder button{background:var(--t11-blue)!important}.primary:hover,.primary-action:hover,.mechanics-save:hover,.confirm-visit:hover{background:var(--t11-blue-hover)!important}
-.product-sidebar nav a.current{box-shadow:inset 3px 0 var(--t11-blue);color:#111!important}.product-sidebar nav a.current svg{color:var(--t11-blue)!important}
-.customer-header{border-bottom:1px solid var(--t11-line)}.customer-next,.customer-level,.customer-referral{border-color:var(--t11-line)}
-.wallet-redesign-v11{--wallet-surface:#fff;min-height:100dvh}.wallet-redesign-v11 .customer-header{background:var(--wallet-surface);box-shadow:none}.wallet-redesign-v11 .customer-hero{box-shadow:0 14px 40px rgba(0,0,0,.08);border:1px solid rgba(0,0,0,.05)}.wallet-redesign-v11 .customer-primary-action{min-height:48px;border-radius:14px;font-weight:700}
-.mechanics-studio>header{padding-bottom:24px}.mechanics-modes>button{min-height:96px;border-radius:14px}.mechanics-modes>button.active{border-color:var(--t11-blue)!important;background:#edf7fd!important;box-shadow:0 0 0 2px #c7e9fa!important}.mechanics-modes>button.active>span{color:var(--t11-blue)}
-.staff-mode-banner{border-color:var(--t11-line)!important;background:var(--t11-surface)!important}.staff-mode-banner>div>svg{background:#eaf6fd!important;color:var(--t11-blue)!important}.scanner-manual button{color:var(--t11-blue)!important;background:#edf7fd!important}
-.analytics-recommendations{border-color:var(--t11-line)!important;background:var(--t11-surface)!important}.analytics-recommendations a:hover{border-color:#aadcf5;background:#f5fbfe}
-@media(max-width:760px){.product-main.analytics-page-v11,.product-main.loyalty-page-v11,.product-main.integrations-page-v11{padding-top:18px}.product-main>header{min-height:68px;padding:12px 14px}.product-main>section{padding:18px 14px 92px}.product-sidebar{width:min(300px,88vw)}.mechanics-modes{grid-template-columns:1fr!important}.mechanics-modes>button{min-height:82px}.staff-mode-banner{border-radius:14px}.product-main h1{font-size:24px}.wallet-redesign-v11 .customer-hero{margin:12px 16px}}
-@media(min-width:761px){.product-main>section{padding-left:clamp(24px,3.6vw,64px);padding-right:clamp(24px,3.6vw,64px)}}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}}
+:root {
+  --t11-blue: #0082d2;
+  --t11-blue-hover: #006fb4;
+  --t11-bg: #f5f5f7;
+  --t11-surface: #fff;
+  --t11-text: #1d1d1f;
+  --t11-muted: #6e6e73;
+  --t11-line: #e5e5ea;
+  --t11-radius: 16px;
+  --t11-shadow: 0 10px 30px rgba(0, 0, 0, 0.055);
+}
+body {
+  background: var(--t11-bg);
+  color: var(--t11-text);
+}
+.product-main {
+  background: var(--t11-bg);
+}
+.product-main.analytics-page-v11,
+.product-main.loyalty-page-v11,
+.product-main.integrations-page-v11 {
+  padding-top: 30px;
+}
+.product-main > header {
+  background: rgba(245, 245, 247, 0.9);
+  border-bottom: 1px solid var(--t11-line);
+  backdrop-filter: blur(20px);
+}
+.product-main h1,
+.product-main h2,
+.product-main h3 {
+  letter-spacing: -0.035em;
+}
+.product-main > section {
+  max-width: 1520px;
+}
+.data-card,
+.entity-card,
+.module-card,
+.automation-card,
+.current-plan-card,
+.mvp-settings-card,
+.mvp-extension-catalog,
+.mvp-principle,
+.crm-filter-panel,
+.mechanics-studio,
+.analytics-chart,
+.analytics-segments,
+.analytics-top,
+.loyalty-economy,
+.scanner-main,
+.scan-result,
+.business-outcomes,
+.analytics-answer {
+  border: 1px solid var(--t11-line) !important;
+  border-radius: var(--t11-radius) !important;
+  box-shadow: var(--t11-shadow) !important;
+}
+.primary,
+.primary-action,
+.mechanics-save,
+.confirm-visit,
+.scanner-placeholder button {
+  background: var(--t11-blue) !important;
+}
+.primary:hover,
+.primary-action:hover,
+.mechanics-save:hover,
+.confirm-visit:hover {
+  background: var(--t11-blue-hover) !important;
+}
+.product-sidebar nav a.current {
+  box-shadow: inset 3px 0 var(--t11-blue);
+  color: #111 !important;
+}
+.product-sidebar nav a.current svg {
+  color: var(--t11-blue) !important;
+}
+.customer-header {
+  border-bottom: 1px solid var(--t11-line);
+}
+.customer-next,
+.customer-level,
+.customer-referral {
+  border-color: var(--t11-line);
+}
+.wallet-redesign-v11 {
+  --wallet-surface: #fff;
+  min-height: 100dvh;
+}
+.wallet-redesign-v11 .customer-header {
+  background: var(--wallet-surface);
+  box-shadow: none;
+}
+.wallet-redesign-v11 .customer-hero {
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+.wallet-redesign-v11 .customer-primary-action {
+  min-height: 48px;
+  border-radius: 14px;
+  font-weight: 700;
+}
+.mechanics-studio > header {
+  padding-bottom: 24px;
+}
+.mechanics-modes > button {
+  min-height: 96px;
+  border-radius: 14px;
+}
+.mechanics-modes > button.active {
+  border-color: var(--t11-blue) !important;
+  background: #edf7fd !important;
+  box-shadow: 0 0 0 2px #c7e9fa !important;
+}
+.mechanics-modes > button.active > span {
+  color: var(--t11-blue);
+}
+.staff-mode-banner {
+  border-color: var(--t11-line) !important;
+  background: var(--t11-surface) !important;
+}
+.staff-mode-banner > div > svg {
+  background: #eaf6fd !important;
+  color: var(--t11-blue) !important;
+}
+.scanner-manual button {
+  color: var(--t11-blue) !important;
+  background: #edf7fd !important;
+}
+.analytics-recommendations {
+  border-color: var(--t11-line) !important;
+  background: var(--t11-surface) !important;
+}
+.analytics-recommendations a:hover {
+  border-color: #aadcf5;
+  background: #f5fbfe;
+}
+@media (max-width: 760px) {
+  .product-main.analytics-page-v11,
+  .product-main.loyalty-page-v11,
+  .product-main.integrations-page-v11 {
+    padding-top: 18px;
+  }
+  .product-main > header {
+    min-height: 68px;
+    padding: 12px 14px;
+  }
+  .product-main > section {
+    padding: 18px 14px 92px;
+  }
+  .product-sidebar {
+    width: min(300px, 88vw);
+  }
+  .mechanics-modes {
+    grid-template-columns: 1fr !important;
+  }
+  .mechanics-modes > button {
+    min-height: 82px;
+  }
+  .staff-mode-banner {
+    border-radius: 14px;
+  }
+  .product-main h1 {
+    font-size: 24px;
+  }
+  .wallet-redesign-v11 .customer-hero {
+    margin: 12px 16px;
+  }
+}
+@media (min-width: 761px) {
+  .product-main > section {
+    padding-left: clamp(24px, 3.6vw, 64px);
+    padding-right: clamp(24px, 3.6vw, 64px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
