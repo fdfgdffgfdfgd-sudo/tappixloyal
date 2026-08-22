@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -22,9 +23,65 @@ type reviewSettingsInput struct {
 	Enabled           bool    `json:"enabled"`
 }
 
+type analyticsDateRange struct {
+	Key                            string
+	Start, End, PreviousStart, PreviousEnd time.Time
+}
+
+func resolveAnalyticsRange(now time.Time, location *time.Location, period, from, to string) (analyticsDateRange, error) {
+	local := now.In(location)
+	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+	end := today.AddDate(0, 0, 1)
+	start := today.AddDate(0, 0, -29)
+	key := period
+	switch period {
+	case "today":
+		start = today
+	case "yesterday":
+		start, end = today.AddDate(0, 0, -1), today
+	case "week":
+		start = today.AddDate(0, 0, -6)
+	case "", "month":
+		key = "month"
+	case "quarter":
+		start = today.AddDate(0, 0, -89)
+	case "this_month":
+		start = time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, location)
+	case "previous_month":
+		end = time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, location)
+		start = end.AddDate(0, -1, 0)
+	case "custom":
+		var err error
+		start, err = time.ParseInLocation("2006-01-02", from, location)
+		if err != nil {
+			return analyticsDateRange{}, fmt.Errorf("invalid start date")
+		}
+		last, parseErr := time.ParseInLocation("2006-01-02", to, location)
+		if parseErr != nil || last.Before(start) || last.Sub(start) > 366*24*time.Hour {
+			return analyticsDateRange{}, fmt.Errorf("invalid end date")
+		}
+		end = last.AddDate(0, 0, 1)
+	default:
+		return analyticsDateRange{}, fmt.Errorf("unsupported period")
+	}
+	duration := end.Sub(start)
+	return analyticsDateRange{Key: key, Start: start, End: end, PreviousStart: start.Add(-duration), PreviousEnd: start}, nil
+}
+
 func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 	tenant := companyID(r)
 	period := r.URL.Query().Get("period")
+	timezone := "Asia/Almaty"
+	_ = a.db.QueryRow(r.Context(), `SELECT timezone FROM companies WHERE id=$1`, tenant).Scan(&timezone)
+	location, locationErr := time.LoadLocation(timezone)
+	if locationErr != nil {
+		location = time.UTC
+	}
+	rangeValue, rangeErr := resolveAnalyticsRange(time.Now(), location, period, r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	if rangeErr != nil {
+		fail(w, 422, "INVALID_ANALYTICS_PERIOD", "Проверьте выбранный период")
+		return
+	}
 	branch := strings.TrimSpace(r.URL.Query().Get("branchId"))
 	// Do not let malformed user input reach a UUID cast in the query.
 	if len(branch) != 36 || strings.Count(branch, "-") != 4 {
@@ -34,19 +91,14 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 	// infer one stable type for the optional branch parameter. Passing an
 	// untyped nil here makes inference driver/version dependent.
 	branchArg := branch
-	days := 30
-	if period == "week" {
-		days = 7
-	} else if period == "quarter" {
-		days = 90
-	}
+	days := int(rangeValue.End.Sub(rangeValue.Start).Hours() / 24)
 	rows, err := a.db.Query(r.Context(), `SELECT d::date,
-		 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.created_at::date=d::date AND c.deleted_at IS NULL AND ($3::text = '' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=CAST(NULLIF($3::text,'') AS uuid)))),
-		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid))),
-		 (SELECT coalesce(sum(v.points_added),0) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid))),
-		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid)) AND v.created_at=(SELECT min(v2.created_at) FROM visits v2 WHERE v2.company_id=$1 AND v2.customer_id=v.customer_id)),
-		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($3::text = '' OR v.branch_id=CAST(NULLIF($3::text,'') AS uuid)) AND v.created_at>(SELECT min(v2.created_at) FROM visits v2 WHERE v2.company_id=$1 AND v2.customer_id=v.customer_id))
-		 FROM generate_series(current_date-$2::int,current_date,interval '1 day') d ORDER BY d`, tenant, days-1, branchArg)
+		 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.created_at::date=d::date AND c.deleted_at IS NULL AND ($4::text = '' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=CAST(NULLIF($4::text,'') AS uuid)))),
+		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($4::text = '' OR v.branch_id=CAST(NULLIF($4::text,'') AS uuid))),
+		 (SELECT coalesce(sum(v.points_added),0) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($4::text = '' OR v.branch_id=CAST(NULLIF($4::text,'') AS uuid))),
+		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($4::text = '' OR v.branch_id=CAST(NULLIF($4::text,'') AS uuid)) AND v.created_at=(SELECT min(v2.created_at) FROM visits v2 WHERE v2.company_id=$1 AND v2.customer_id=v.customer_id)),
+		 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at::date=d::date AND ($4::text = '' OR v.branch_id=CAST(NULLIF($4::text,'') AS uuid)) AND v.created_at>(SELECT min(v2.created_at) FROM visits v2 WHERE v2.company_id=$1 AND v2.customer_id=v.customer_id))
+		 FROM generate_series($2::timestamptz,($3::timestamptz-interval '1 second'),interval '1 day') d ORDER BY d`, tenant, rangeValue.Start, rangeValue.End, branchArg)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить аналитику")
 		return
@@ -77,17 +129,17 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 		 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL AND c.created_at>=current_date-make_interval(days=>$2-1) AND ($3::text = '' OR EXISTS(SELECT 1 FROM visits vf WHERE vf.company_id=c.company_id AND vf.customer_id=c.id AND vf.branch_id=CAST(NULLIF($3::text,'') AS uuid)))))`, tenant, days, branchArg).Scan(&totalCustomers, &periodVisits, &pointsIssued, &pointsRedeemed, &active, &repeatActive, &newCustomers)
 	var previousVisits, previousActive, previousNew, previousIssued int
 	_ = a.db.QueryRow(r.Context(), `SELECT
-	 (SELECT count(*) FROM visits WHERE company_id=$1 AND created_at>=current_date-make_interval(days=>$2*2-1) AND created_at<current_date-make_interval(days=>$2-1)),
-	 (SELECT count(DISTINCT customer_id) FROM visits WHERE company_id=$1 AND created_at>=current_date-make_interval(days=>$2*2-1) AND created_at<current_date-make_interval(days=>$2-1)),
-	 (SELECT count(*) FROM customers WHERE company_id=$1 AND deleted_at IS NULL AND created_at>=current_date-make_interval(days=>$2*2-1) AND created_at<current_date-make_interval(days=>$2-1)),
-	 (SELECT coalesce(sum(amount),0) FROM bonus_ledger WHERE company_id=$1 AND operation='credit' AND created_at>=current_date-make_interval(days=>$2*2-1) AND created_at<current_date-make_interval(days=>$2-1))`, tenant, days).Scan(&previousVisits, &previousActive, &previousNew, &previousIssued)
+	 (SELECT count(*) FROM visits v WHERE v.company_id=$1 AND v.created_at>=current_date-make_interval(days=>$2*2-1) AND v.created_at<current_date-make_interval(days=>$2-1) AND ($3::text='' OR v.branch_id=nullif($3::text,'')::uuid)),
+	 (SELECT count(DISTINCT customer_id) FROM visits v WHERE v.company_id=$1 AND v.created_at>=current_date-make_interval(days=>$2*2-1) AND v.created_at<current_date-make_interval(days=>$2-1) AND ($3::text='' OR v.branch_id=nullif($3::text,'')::uuid)),
+	 (SELECT count(*) FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL AND c.created_at>=current_date-make_interval(days=>$2*2-1) AND c.created_at<current_date-make_interval(days=>$2-1) AND ($3::text='' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=c.company_id AND v.customer_id=c.id AND v.branch_id=nullif($3::text,'')::uuid))),
+	 (SELECT coalesce(sum(amount),0) FROM bonus_ledger b WHERE b.company_id=$1 AND b.operation='credit' AND b.created_at>=current_date-make_interval(days=>$2*2-1) AND b.created_at<current_date-make_interval(days=>$2-1) AND ($3::text='' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=b.company_id AND v.customer_id=b.customer_id AND v.branch_id=nullif($3::text,'')::uuid)))`, tenant, days, branchArg).Scan(&previousVisits, &previousActive, &previousNew, &previousIssued)
 	var returning, frequent, loyal, atRisk, outstanding int
 	_ = a.db.QueryRow(r.Context(), `SELECT
-	 count(*) FILTER(WHERE EXISTS(SELECT 1 FROM visits v WHERE v.company_id=$1 AND v.customer_id=c.id AND v.created_at>=now()-make_interval(days=>$2))),
+	 count(*) FILTER(WHERE EXISTS(SELECT 1 FROM visits v WHERE v.company_id=$1 AND v.customer_id=c.id AND v.created_at>=now()-make_interval(days=>$2) AND ($3::text='' OR v.branch_id=nullif($3::text,'')::uuid))),
 	 count(*) FILTER(WHERE c.total_visits>=2),count(*) FILTER(WHERE c.total_visits>=5),count(*) FILTER(WHERE c.total_visits>=10),
-	 count(*) FILTER(WHERE c.total_visits>0 AND NOT EXISTS(SELECT 1 FROM visits v WHERE v.company_id=$1 AND v.customer_id=c.id AND v.created_at>=now()-interval '45 days')),
+	 count(*) FILTER(WHERE c.total_visits>0 AND NOT EXISTS(SELECT 1 FROM visits v WHERE v.company_id=$1 AND v.customer_id=c.id AND v.created_at>=now()-interval '45 days' AND ($3::text='' OR v.branch_id=nullif($3::text,'')::uuid))),
 	 count(*) FILTER(WHERE c.created_at>=current_date-make_interval(days=>$2))
-	 FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL`, tenant, days).Scan(&active, &returning, &frequent, &loyal, &atRisk, &newCustomers)
+	 FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL AND ($3::text='' OR EXISTS(SELECT 1 FROM visits vb WHERE vb.company_id=c.company_id AND vb.customer_id=c.id AND vb.branch_id=nullif($3::text,'')::uuid))`, tenant, days, branchArg).Scan(&active, &returning, &frequent, &loyal, &atRisk, &newCustomers)
 	_ = a.db.QueryRow(r.Context(), `SELECT coalesce(sum(total_points),0) FROM customers WHERE company_id=$1 AND deleted_at IS NULL`, tenant).Scan(&outstanding)
 	retention := 0.0
 	if active > 0 {
@@ -98,7 +150,7 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 		averageVisits = float64(periodVisits) / float64(active)
 	}
 	top := []map[string]any{}
-	topRows, err := a.db.Query(r.Context(), `SELECT id,first_name,last_name,total_visits,total_points,level FROM customers WHERE company_id=$1 AND deleted_at IS NULL ORDER BY total_visits DESC,total_points DESC LIMIT 5`, tenant)
+	topRows, err := a.db.Query(r.Context(), `SELECT c.id,c.first_name,c.last_name,c.total_visits,c.total_points,c.level FROM customers c WHERE c.company_id=$1 AND c.deleted_at IS NULL AND ($2::text='' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=c.company_id AND v.customer_id=c.id AND v.branch_id=nullif($2::text,'')::uuid)) ORDER BY c.total_visits DESC,c.total_points DESC LIMIT 5`, tenant, branchArg)
 	if err != nil {
 		fail(w, 500, "INTERNAL_ERROR", "Не удалось загрузить топ клиентов")
 		return
@@ -122,11 +174,12 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var peakHour int
-	_ = a.db.QueryRow(r.Context(), `SELECT coalesce((SELECT extract(hour from created_at)::int FROM visits WHERE company_id=$1 GROUP BY 1 ORDER BY count(*) DESC LIMIT 1),0)`, tenant).Scan(&peakHour)
+	_ = a.db.QueryRow(r.Context(), `SELECT coalesce((SELECT extract(hour from created_at)::int FROM visits WHERE company_id=$1 AND created_at>=current_date-make_interval(days=>$2-1) AND ($3::text='' OR branch_id=nullif($3::text,'')::uuid) GROUP BY 1 ORDER BY count(*) DESC LIMIT 1),0)`, tenant, days, branchArg).Scan(&peakHour)
 	write(w, 200, envelope{Success: true, Data: map[string]any{
 		"period": period, "days": days, "series": series,
 		"totals":       map[string]int{"customers": totalCustomers, "visits": periodVisits, "pointsIssued": pointsIssued, "pointsRedeemed": pointsRedeemed, "outstanding": outstanding},
 		"previous":     map[string]int{"visits": previousVisits, "active": previousActive, "new": previousNew, "pointsIssued": previousIssued},
+		"comparisonAvailable": previousVisits > 0 || previousActive > 0 || previousNew > 0 || previousIssued > 0,
 		"audience":     map[string]any{"active": active, "returning": returning, "repeatActive": repeatActive, "frequent": frequent, "loyal": loyal, "atRisk": atRisk, "new": newCustomers, "retentionRate": retention, "averageVisits": averageVisits},
 		"topCustomers": top, "peakHour": peakHour,
 	}})

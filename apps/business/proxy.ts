@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PREFIXES = ["/login", "/join/", "/r/", "/site/", "/customer"];
+const PUBLIC_PREFIXES = ["/welcome", "/login", "/join/", "/r/", "/site/", "/customer"];
 
 function loginRedirect(request: NextRequest) {
   const url = new URL("/login", request.url);

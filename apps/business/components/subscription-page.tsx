@@ -6,6 +6,8 @@ import { subscriptionStatusLabel } from "@/lib/labels";
 import { SectionShell } from "./section-shell";
 import Link from "next/link";
 import { Notice } from "./management-shared";
+import { API_URL } from "@/lib/api";
+import { fallbackPlans, planPresentation, type PlanDefinition } from "@/lib/plans";
 
 type Subscription = {
   plan: string;
@@ -22,11 +24,17 @@ type SubscriptionModule = { code:string; name:string; enabled:boolean; available
 export function SubscriptionPage() {
   const [value, setValue] = useState<Subscription | null>(null);
   const [modules, setModules] = useState<SubscriptionModule[]>([]);
+  const [plans, setPlans] = useState<PlanDefinition[]>(fallbackPlans);
+  const [annual, setAnnual] = useState(false);
   const [msg, setMsg] = useState("");
   useEffect(() => {
     Promise.all([api<Subscription>("/subscription"),api<SubscriptionModule[]>("/modules")])
-      .then(([subscription,moduleItems])=>{setValue(subscription);setModules(moduleItems)})
+      .then(([subscription,moduleItems])=>{setValue(subscription);setAnnual(subscription.billingPeriod==="annual");setModules(moduleItems)})
       .catch((e) => setMsg(e.message));
+  }, []);
+  const currentPlan = value ? plans.find(plan => plan.id === (value.plan.toLowerCase()==="business"?"growth":value.plan.toLowerCase()==="enterprise"?"pro":value.plan.toLowerCase())) : undefined;
+  useEffect(() => {
+    fetch(`${API_URL}/public/plans`).then(response => response.json()).then(result => result.success && setPlans(result.data)).catch(() => {});
   }, []);
   return (
     <SectionShell
@@ -44,11 +52,14 @@ export function SubscriptionPage() {
             <p>Текущий тариф</p>
             <h2>{value.plan}</h2>
             <strong>
-              {value.amount.toLocaleString("ru-RU")} {value.currency} / месяц
+              {(value.billingPeriod==="annual"&&currentPlan?currentPlan.annualPrice:value.amount).toLocaleString("ru-RU")} {value.currency} / {value.billingPeriod==="annual"?"год":"месяц"}
             </strong>
             <div className="subscription-meta">
               <span>
                 Статус <b>{subscriptionStatusLabel(value.status)}</b>
+              </span>
+              <span>
+                Период <b>{value.billingPeriod==="annual"?"Годовой":"Ежемесячный"}</b>
               </span>
               <span>
                 Следующее продление{" "}
@@ -78,63 +89,19 @@ export function SubscriptionPage() {
               <span>ТАРИФЫ TAPPIX</span>
               <h2>Выберите возможности под ваш рост</h2>
               <p>
-                Ваш тариф подсвечен. Переход оформляется через Tappix, поэтому
-                функции нельзя включить в обход подписки.
+                Единые цены для сайта и Billing. Годовая оплата экономит стоимость двух месяцев.
               </p>
+              <div className="billing-switch" role="group" aria-label="Период оплаты"><button className={!annual ? "active" : ""} onClick={() => setAnnual(false)}>Ежемесячно</button><button className={annual ? "active" : ""} onClick={() => setAnnual(true)}>За год <small>2 месяца бесплатно</small></button></div>
             </div>
             <div className="pricing-grid">
-              {[
-                {
-                  name: "Starter",
-                  price: 19900,
-                  desc: "Для запуска одной программы",
-                  features: [
-                    "До 500 клиентов",
-                    "2 сотрудника",
-                    "2 NFC/QR точки",
-                    "CRM и полная история визитов",
-                    "Базовая детальная аналитика",
-                    "Бонусы, штампы, награды и отзывы",
-                    "Дизайн Guest Portal",
-                  ],
-                },
-                {
-                  name: "Growth",
-                  price: 49900,
-                  desc: "Для растущего бизнеса",
-                  features: [
-                    "До 5 000 клиентов",
-                    "10 сотрудников",
-                    "20 NFC/QR точек",
-                    "Всё из Starter",
-                    "Расширенные сегменты и удержание",
-                    "До 2 000 сообщений в месяц",
-                    "Автоматические возвратные кампании",
-                    "Онлайн-запись и Mini Site",
-                  ],
-                },
-                {
-                  name: "Pro",
-                  price: 99900,
-                  desc: "Для сети и интеграций",
-                  features: [
-                    "До 50 000 клиентов",
-                    "50 сотрудников",
-                    "200 NFC/QR точек",
-                    "Всё из Growth",
-                    "API и webhooks",
-                    "Сводная аналитика сети",
-                    "Собственный домен и приоритетная поддержка",
-                    "Индивидуальные лимиты и интеграции",
-                  ],
-                },
-              ].map((plan) => {
+              {plans.map((plan) => {
                 const current =
                   value.plan.toLowerCase() ===
-                    (plan.name === "Growth"
+                    (plan.id === "growth"
                       ? "business"
-                      : plan.name.toLowerCase()) ||
-                  value.plan.toLowerCase() === plan.name.toLowerCase();
+                      : plan.id === "pro" ? "enterprise" : plan.id) ||
+                  value.plan.toLowerCase() === plan.id;
+                const presentation = planPresentation[plan.id];
                 return (
                   <article
                     className={
@@ -144,13 +111,14 @@ export function SubscriptionPage() {
                   >
                     {current && <b className="current-ribbon">Ваш тариф</b>}
                     <h3>{plan.name}</h3>
-                    <p>{plan.desc}</p>
+                    <p>{plan.description}</p>
                     <strong>
-                      {plan.price.toLocaleString("ru-RU")} ₸{" "}
-                      <small>/ месяц</small>
+                      {(annual ? plan.annualPrice : plan.monthlyPrice).toLocaleString("ru-RU")} ₸{" "}
+                      <small>/ {annual ? "год" : "месяц"}</small>
                     </strong>
+                    {annual&&<p className="effective-monthly">Эквивалент {(plan.annualPrice/12).toLocaleString("ru-RU",{maximumFractionDigits:0})} ₸ в месяц</p>}
                     <ul>
-                      {plan.features.map((x) => (
+                      {presentation.features.map((x) => (
                         <li key={x}>
                           <Check />
                           {x}

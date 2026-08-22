@@ -97,7 +97,12 @@ func (a *api) campaignAnalytics(w http.ResponseWriter, r *http.Request) {
 	rewardSpend := float64(redemptions) * rewardCost
 	totalCost := messageSpend + rewardSpend
 	treatmentRate, holdoutRate := percentage(treatmentBuyers, treatment), percentage(holdoutBuyers, holdout)
-	upliftAvailable := holdoutPercent > 0 && holdout > 0
+	upliftConfigured := holdoutPercent > 0 && holdout > 0
+	var observedPurchases int
+	_ = a.db.QueryRow(r.Context(), `SELECT count(*) FROM sales_transactions t JOIN campaign_recipients r ON r.company_id=t.company_id AND r.customer_id=t.customer_id AND r.campaign_id=$2
+		JOIN marketing_campaigns c ON c.id=r.campaign_id AND c.company_id=r.company_id
+		WHERE t.company_id=$1 AND t.status IN('completed','partially_refunded') AND NOT t.sandbox AND t.occurred_at>=c.sent_at AND t.occurred_at<=c.sent_at+make_interval(days=>c.attribution_window_days)`, companyID(r), r.PathValue("id")).Scan(&observedPurchases)
+	upliftAvailable := upliftConfigured && observedPurchases > 0
 	var uplift, incrementalRevenue any
 	var confidence any
 	significant := false
@@ -126,17 +131,33 @@ func (a *api) campaignAnalytics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var roi any
-	if totalCost > 0 {
+	revenueAvailable := (upliftAvailable && (treatmentRevenue > 0 || holdoutRevenue > 0)) || (!upliftAvailable && attributedRevenue > 0)
+	if totalCost > 0 && revenueAvailable {
 		roi = (revenueForROI - totalCost) / totalCost * 100
+	}
+	roiUnavailableReason := ""
+	if !revenueAvailable {
+		roiUnavailableReason = "Подключите POS и накопите данные об атрибутированных продажах"
+	} else if totalCost <= 0 {
+		roiUnavailableReason = "Укажите стоимость сообщений и наград"
 	}
 	write(w, 200, envelope{Success: true, Data: map[string]any{
 		"campaignId": r.PathValue("id"), "name": name, "status": status, "sentAt": sentAt,
-		"attributionWindowDays": windowDays, "holdoutPercent": holdoutPercent, "upliftAvailable": upliftAvailable,
+		"attributionWindowDays": windowDays, "holdoutPercent": holdoutPercent, "upliftConfigured": upliftConfigured, "upliftAvailable": upliftAvailable,
+		"upliftUnavailableReason": func() string {
+			if !upliftConfigured {
+				return "Для расчёта uplift требуется контрольная группа"
+			}
+			if observedPurchases == 0 {
+				return "Подключите POS и накопите продажи основной и контрольной групп"
+			}
+			return ""
+		}(),
 		"experiment": map[string]any{"sampleSufficient": treatment >= 30 && holdout >= 30, "statisticallySignificant": significant, "confidencePercent": confidence},
 		"audience":   map[string]int{"treatment": treatment, "holdout": holdout},
 		"delivery":   map[string]any{"delivered": delivered, "opened": opened, "clicked": clicked, "openRate": percentage(opened, delivered), "clickRate": percentage(clicked, delivered)},
 		"purchases":  map[string]any{"treatmentBuyers": treatmentBuyers, "treatmentRevenue": treatmentRevenue, "holdoutBuyers": holdoutBuyers, "holdoutRevenue": holdoutRevenue, "treatmentConversionRate": treatmentRate, "holdoutConversionRate": holdoutRate, "attributedRevenue": attributedRevenue, "incrementalRevenue": incrementalRevenue, "upliftPercentagePoints": uplift},
 		"costs":      map[string]float64{"messages": messageSpend, "rewards": rewardSpend, "total": totalCost},
-		"roi":        roi, "roiRevenueBasis": revenueLabel,
+		"roi":        roi, "roiAvailable": revenueAvailable && totalCost > 0, "roiUnavailableReason": roiUnavailableReason, "roiRevenueBasis": revenueLabel,
 	}})
 }

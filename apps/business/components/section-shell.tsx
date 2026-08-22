@@ -8,8 +8,8 @@ import {
   Camera,
   Check,
   ChevronDown,
+  CreditCard,
   Gift,
-  FileText,
   Menu,
   LayoutDashboard,
   LogOut,
@@ -17,9 +17,7 @@ import {
   Search,
   Send,
   Settings,
-  ShieldAlert,
   Users,
-  UsersRound,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -29,11 +27,9 @@ import { PageHeader } from "./ui-system";
 import { useDialogFocusTrap } from "./use-dialog-focus-trap";
 
 const items: readonly (readonly [string, readonly (readonly [string, LucideIcon, string])[]])[] = [
-  ["Работа", [["/", LayoutDashboard, "Обзор"], ["/customers", Users, "Клиенты"], ["/scanner", Camera, "Staff Mode"]]],
-  ["Лояльность", [["/loyalty", Gift, "Программа"], ["/referrals", UsersRound, "Рефералы"]]],
-  ["Коммуникации", [["/campaigns", Send, "Кампании и автоматизации"]]],
-  ["Аналитика", [["/analytics", BarChart3, "Аналитика"], ["/reports", FileText, "Отчёты"]]],
-  ["Система", [["/integrations", Plug, "Интеграции"], ["/risk-center", ShieldAlert, "Проверка операций"], ["/employees", Users, "Команда"], ["/settings", Settings, "Настройки"]]],
+  ["Работа", [["/", LayoutDashboard, "Обзор"], ["/customers", Users, "Клиенты"], ["/loyalty", Gift, "Программа лояльности"], ["/campaigns", Send, "Кампании"], ["/analytics", BarChart3, "Аналитика"]]],
+  ["Управление", [["/integrations", Plug, "Интеграции"], ["/scanner", Camera, "Staff Mode"], ["/branches", Building2, "Филиалы"]]],
+  ["Аккаунт", [["/settings", Settings, "Настройки"], ["/subscription", CreditCard, "Тариф и оплата"]]],
 ] as const;
 const settingsRoutes = new Set([
   "/branches",

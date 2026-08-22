@@ -14,6 +14,11 @@ export function CustomersPage() {
   const [q, setQ] = useState("");
   const [searchQ, setSearchQ] = useState("");
   const [level, setLevel] = useState("");
+  const [segment, setSegment] = useState("");
+  const [status, setStatus] = useState("");
+  const [lastVisit, setLastVisit] = useState("");
+  const [rewardState, setRewardState] = useState("");
+  const [registeredFrom, setRegisteredFrom] = useState("");
   const [branch, setBranch] = useState("");
   const [birthday, setBirthday] = useState("");
   const [minPoints, setMinPoints] = useState("");
@@ -31,6 +36,7 @@ export function CustomersPage() {
   const query = new URLSearchParams({
     search: searchQ,
     level,
+    segment,status,lastVisit,rewardState,registeredFrom,
     branch,
     birthday,
     minPoints,
@@ -57,7 +63,7 @@ export function CustomersPage() {
       .catch(() => {});
     try {
       const saved = JSON.parse(sessionStorage.getItem("tappix_customer_filters") || "{}");
-      setQ(saved.q || ""); setSearchQ(saved.q || ""); setLevel(saved.level || ""); setBranch(saved.branch || ""); setBirthday(saved.birthday || ""); setMinPoints(saved.minPoints || ""); setSort(saved.sort || "createdAt"); setOrder(saved.order || "desc"); setPage(Number(saved.page) || 1);
+      setQ(saved.q || ""); setSearchQ(saved.q || ""); setLevel(saved.level || ""); setSegment(saved.segment||"");setStatus(saved.status||"");setLastVisit(saved.lastVisit||"");setRewardState(saved.rewardState||"");setRegisteredFrom(saved.registeredFrom||"");setBranch(saved.branch || ""); setBirthday(saved.birthday || ""); setMinPoints(saved.minPoints || ""); setSort(saved.sort || "createdAt"); setOrder(saved.order || "desc"); setPage(Number(saved.page) || 1);
     } catch { /* ignore invalid saved filters */ }
     setFiltersReady(true);
   }, []);
@@ -68,11 +74,11 @@ export function CustomersPage() {
   useEffect(() => {
     if (!filtersReady) return;
     void load();
-    sessionStorage.setItem("tappix_customer_filters", JSON.stringify({q:searchQ,level,branch,birthday,minPoints,sort,order,page}));
-  }, [filtersReady, searchQ, level, branch, birthday, minPoints, sort, order, page]);
+    sessionStorage.setItem("tappix_customer_filters", JSON.stringify({q:searchQ,level,segment,status,lastVisit,rewardState,registeredFrom,branch,birthday,minPoints,sort,order,page}));
+  }, [filtersReady, searchQ, level, segment,status,lastVisit,rewardState,registeredFrom,branch, birthday, minPoints, sort, order, page]);
   useEffect(
     () => setPage(1),
-    [searchQ, level, branch, birthday, minPoints, sort, order],
+    [searchQ, level, segment,status,lastVisit,rewardState,registeredFrom,branch, birthday, minPoints, sort, order],
   );
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -104,6 +110,7 @@ export function CustomersPage() {
   function resetFilters() {
     setQ("");
     setLevel("");
+    setSegment("");setStatus("");setLastVisit("");setRewardState("");setRegisteredFrom("");
     setBranch("");
     setBirthday("");
     setMinPoints("");
@@ -132,9 +139,14 @@ export function CustomersPage() {
           Новый клиент
         </button>
       </div>
-      <details className="crm-filter-panel">
-        <summary><span><Search/>Фильтры и сортировка</span><small>Уровень, филиал, день рождения и баланс</small></summary>
+      <details className="crm-filter-panel" open>
+        <summary><span><Search/>Фильтры и сортировка</span><small>Сегмент, статус, филиал и активность</small></summary>
       <div className="crm-filters" aria-label="Фильтры клиентов">
+        <label>Сегмент<select value={segment} onChange={e=>setSegment(e.target.value)}><option value="">Все сегменты</option><option value="new">Новые</option><option value="active">Активные</option><option value="loyal">Лояльные</option><option value="at_risk">Требуют внимания</option><option value="inactive">Неактивные</option></select></label>
+        <label>Статус<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Все</option><option value="active">Активен</option><option value="inactive">Неактивен</option></select></label>
+        <label>Последний визит<select value={lastVisit} onChange={e=>setLastVisit(e.target.value)}><option value="">Любая дата</option><option value="30d">За 30 дней</option><option value="90d">За 90 дней</option><option value="older">Более 90 дней назад</option></select></label>
+        <label>Награда<select value={rewardState} onChange={e=>setRewardState(e.target.value)}><option value="">Любой прогресс</option><option value="close">Есть прогресс</option><option value="available">Награда доступна</option></select></label>
+        <label>Дата вступления<input type="date" value={registeredFrom} onChange={e=>setRegisteredFrom(e.target.value)}/></label>
         <label>
           Уровень
           <select value={level} onChange={(e) => setLevel(e.target.value)}>
@@ -204,10 +216,12 @@ export function CustomersPage() {
             <tr>
               <th>Клиент</th>
               <th>Телефон</th>
-              <th>Уровень</th>
               <th>Сегмент</th>
               <th>Посещения</th>
-              <th>Баланс</th>
+              <th>Прогресс / баланс</th>
+              <th>Последний визит</th>
+              <th>Филиал</th>
+              <th>Статус</th>
             </tr>
           </thead>
           <tbody>
@@ -221,34 +235,27 @@ export function CustomersPage() {
                   </Link>
                 </td>
                 <td data-label="Телефон">{c.phone}</td>
-                <td data-label="Уровень">
-                  <span className="tag">{customerLevelLabel(c.level)}</span>
-                </td>
                 <td data-label="Сегмент">
-                  <span
-                    className={`customer-segment segment-${c.totalVisits >= 10 ? "loyal" : c.totalVisits >= 5 ? "frequent" : "new"}`}
-                  >
-                    {c.totalVisits >= 10
-                      ? "Постоянный"
-                      : c.totalVisits >= 5
-                        ? "Частый"
-                        : "Новый"}
-                  </span>
+                  <span className={`customer-segment segment-${c.segment||"new"}`}>{({new:"Новый",active:"Активный",loyal:"Лояльный",at_risk:"Требует внимания",inactive:"Неактивный"} as Record<string,string>)[c.segment||"new"]}</span>
                 </td>
                 <td data-label="Посещения">{c.totalVisits}</td>
                 <td data-label="Баланс">
                   <b>{c.totalPoints} б.</b>
                 </td>
+                <td data-label="Последний визит">{c.lastVisit?new Date(c.lastVisit).toLocaleDateString("ru-RU"):"Ещё не был"}</td>
+                <td data-label="Филиал">{c.lastBranch||"—"}</td>
+                <td data-label="Статус"><span className={`owner-status ${c.status||"active"}`}>{c.status==="inactive"?"Неактивен":"Активен"}</span></td>
               </tr>
             ))}
-            {loading && Array.from({length:5},(_,index)=><tr className="crm-skeleton" key={index}>{Array.from({length:6},(_,cell)=><td key={cell}><span/></td>)}</tr>)}
+            {loading && Array.from({length:5},(_,index)=><tr className="crm-skeleton" key={index}>{Array.from({length:9},(_,cell)=><td key={cell}><span/></td>)}</tr>)}
           </tbody>
         </table>
         {!loading && !error && !items.length && (
           <div className="zero">
             <Users />
-            <strong>Клиенты не найдены</strong>
-            <p>Измените фильтры или создайте нового клиента.</p>
+            <strong>{searchQ||segment||branch?"Клиенты не найдены":"Клиентов пока нет"}</strong>
+            <p>{searchQ||segment||branch?"Измените фильтры или поисковый запрос.":"Первый клиент появится после регистрации через QR или NFC."}</p>
+            {!searchQ&&!segment&&!branch&&<Link className="primary-action" href="/devices">Открыть QR</Link>}
           </div>
         )}
       </div>

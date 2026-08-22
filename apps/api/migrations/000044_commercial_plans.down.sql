@@ -1,0 +1,4 @@
+ALTER TABLE plans_v2 DROP COLUMN IF EXISTS highlighted;
+ALTER TABLE plans_v2 DROP COLUMN IF EXISTS description;
+ALTER TABLE plans_v2 DROP COLUMN IF EXISTS trial_days;
+ALTER TABLE plans_v2 DROP COLUMN IF EXISTS annual_price;

@@ -36,19 +36,19 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await expect(page.getByRole("heading", { name: "Обзор" })).toBeVisible();
 
   if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
-  await page.getByRole("link", { name: "Программа", exact: true }).click();
+  await page.getByRole("link", { name: "Программа лояльности", exact: true }).click();
   await expect(page).toHaveURL(/\/loyalty/);
   await expect(page.getByRole("heading", { name: "Программа лояльности" })).toBeVisible();
 
-  if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
-  await page.getByRole("link", { name: "Отчёты", exact: true }).click();
+  // Secondary operational pages remain deep-linkable but no longer overload
+  // the owner's primary sidebar.
+  await page.goto("/reports");
   await expect(page).toHaveURL(/\/reports/);
   await expect(page.getByRole("heading", { name: "Регулярные отчёты" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Создать/ }).first()).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
-  if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
-  await page.getByRole("link", { name: "Проверка операций", exact: true }).click();
+  await page.goto("/risk-center");
   await expect(page).toHaveURL(/\/risk-center/);
   await expect(page.getByRole("heading", { name: "Проверка операций" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Операции, которые нужно проверить" })).toBeVisible();
@@ -60,21 +60,21 @@ test("tenant owner can enter the workspace and navigate core tasks", async ({ pa
   await expect(page.getByRole("heading", { name: "Что лояльность дала бизнесу?" })).toBeVisible();
   await expect(page.getByText("Возвращаются ли клиенты?")).toBeVisible();
   await expect(page.getByText("Работают ли рекомендации?")).toBeVisible();
-  await expect(page.getByText(/к прошлому периоду|Новый результат за период|Без изменений/).first()).toBeVisible();
+  await expect(page.getByText(/к прошлому периоду|Недостаточно данных для сравнения|Новый результат за период|Без изменений/).first()).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
   if (mobile) await page.getByRole("button", { name: "Открыть меню" }).click();
   await page.getByRole("link", { name: "Staff Mode", exact: true }).click();
   await expect(page).toHaveURL(/\/scanner/);
-  await expect(page.getByRole("heading", { name: "Сканер гостя" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Включить камеру" })).toBeEnabled();
+  await expect(page.getByRole("heading", { name: "Рабочее место сотрудника" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Сканировать QR" })).toBeEnabled();
   await expect(page.getByText("Нет активного филиала")).toHaveCount(0);
-  await page.getByLabel("Введите код клиента").fill(customerCode!);
-  await page.getByRole("button", { name: "Найти клиента" }).click();
+  await page.getByLabel(/Код клиента или телефон/).fill(customerCode!);
+  await page.getByRole("button", { name: "Найти", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Мадина Тест" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Отметить посещение" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Начислить" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Списать" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Добавить посещение/ })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Начислить бонусы" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Списать бонусы" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(hasHorizontalOverflow).toBe(false);

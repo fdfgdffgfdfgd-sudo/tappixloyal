@@ -1,51 +1,853 @@
 "use client";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Check, ChevronRight, Copy, Gift, History, Home, LockKeyhole, LogOut, MessageCircle, MoreHorizontal, QrCode, Share2, ShieldCheck, Sparkles, Trophy, WalletCards, X } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Copy,
+  Gift,
+  History,
+  Home,
+  LockKeyhole,
+  LogOut,
+  MessageCircle,
+  MoreHorizontal,
+  QrCode,
+  Share2,
+  ShieldCheck,
+  Sparkles,
+  Trophy,
+  WalletCards,
+  X,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import Image from "next/image";
 import { csrfHeaders } from "@/lib/csrf";
 import { useDialogFocusTrap } from "./use-dialog-focus-trap";
 import { ConsumerWalletHome } from "./consumer-wallet-home";
 import { API_URL as base } from "@/lib/api";
-type Profile={id:string;firstName:string;lastName:string;phone:string;points:number;visits:number;level:string;company:string;companySlug:string;logoUrl:string;portal:{primaryColor?:string;secondaryColor?:string;themeMode?:string;loyaltyMode?:string;stampsTarget?:number;stampReward?:string;discountStart?:number;discountStep?:number;discountMax?:number;visitsPerStep?:number;referralBonus?:number}};
-type Entry={operation:string;amount:number;balanceAfter:number;description:string;createdAt:string};
-type Wallet={customerCode:string;level:{current:string;next:string;progress:number;remaining:number;nextMin:number};loyalty:{mode:string;eligible:boolean;progress:number;remaining:number;target:number;rewardTitle:string;balancePoints:number;balanceValue:number;discountPercent?:number};bonusValue:number;bonusExpiry:{date?:string;amount:number};nextReward:{title:string;remaining:number;target:number};referralCode:string;referralUrl:string};
-type CustomerReward={id:string;name:string;description:string;status:"available"|"reserved"|"redeemed"|"expired"|"cancelled";issuedAt:string;expiresAt?:string;redeemedAt?:string};
-const guestFetch=(url:string,init?:RequestInit)=>fetch(url,{...init,credentials:"include",headers:{...csrfHeaders("guest"),...init?.headers}});
-const COMPANY_KEY="tappix_guest_company";
-function walletError(error:unknown){const text=error instanceof Error?error.message:"";if(/401|session|expired|истек/i.test(text))return "Сессия истекла. Откройте карту ещё раз.";if(/404|not found|не найден/i.test(text))return "Карта клиента не найдена.";if(/429|too many|лимит/i.test(text))return "Слишком много попыток. Попробуйте через минуту.";return "Не удалось выполнить действие. Попробуйте ещё раз."}
-
-export function PremiumGuestWallet(){
- const[profile,setProfile]=useState<Profile|null>(null),[wallet,setWallet]=useState<Wallet|null>(null),[history,setHistory]=useState<Entry[]>([]),[rewards,setRewards]=useState<CustomerReward[]>([]),[authenticated,setAuthenticated]=useState(false),[mode,setMode]=useState<"whatsapp"|"code"|"pin">("whatsapp"),[identity,setIdentity]=useState({company:"",phone:""}),[devCode,setDevCode]=useState(""),[message,setMessage]=useState(""),[initializing,setInitializing]=useState(true),[tab,setTab]=useState<"home"|"rewards"|"history">("home"),[cashierOpen,setCashierOpen]=useState(false),[menuOpen,setMenuOpen]=useState(false);
- const cashierDialog=useDialogFocusTrap<HTMLDivElement>(cashierOpen,()=>setCashierOpen(false));
- async function load(allowRefresh=true){let responses=await Promise.all([guestFetch(`${base}/customer/me`),guestFetch(`${base}/customer/wallet`),guestFetch(`${base}/customer/history`),guestFetch(`${base}/customer/rewards`)]);if(responses[0].status===401&&allowRefresh){const refreshed=await guestFetch(`${base}/auth/refresh?aud=guest`,{method:"POST"});if(refreshed.ok)return load(false)}const[p,w,a,rewardData]=await Promise.all(responses.map(r=>r.json()));if(!p.success)throw new Error(p.error?.message||"Сессия истекла");setAuthenticated(true);setProfile(p.data);setWallet(w.data);setHistory(a.data||[]);setRewards(rewardData.success?rewardData.data||[]:[]);if(p.data?.companySlug)localStorage.setItem(COMPANY_KEY,p.data.companySlug)}
- useEffect(()=>{load().catch(()=>setAuthenticated(false)).finally(()=>setInitializing(false))},[]);
- // Which company's card this is. The slug used to be hardcoded, so a returning
- // guest of any other company could never sign back in.
- useEffect(()=>{const slug=new URLSearchParams(window.location.search).get("company")||localStorage.getItem(COMPANY_KEY)||"";if(slug)setIdentity(current=>({...current,company:slug}))},[]);
- function accept(){setAuthenticated(true);void load()}
- async function requestOtp(e:FormEvent<HTMLFormElement>){e.preventDefault();setMessage("");try{const value=Object.fromEntries(new FormData(e.currentTarget)) as{company:string;phone:string};const r=await fetch(`${base}/customer/otp/request`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(value)}).then(x=>x.json());if(!r.success)throw new Error(r.error?.message);setIdentity(value);setDevCode(r.data.devCode||"");setMode("code")}catch(error){setMessage(walletError(error))}}
- async function verify(e:FormEvent<HTMLFormElement>){e.preventDefault();try{const code=String(new FormData(e.currentTarget).get("code"));const r=await guestFetch(`${base}/customer/otp/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...identity,code})}).then(x=>x.json());if(!r.success)throw new Error(r.error?.message);accept()}catch(error){setMessage(walletError(error))}}
- async function pinLogin(e:FormEvent<HTMLFormElement>){e.preventDefault();try{const r=await guestFetch(`${base}/customer/login`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.fromEntries(new FormData(e.currentTarget)))}).then(x=>x.json());if(!r.success)throw new Error(r.error?.message);accept()}catch(error){setMessage(walletError(error))}}
- async function signOut(){await guestFetch(`${base}/auth/logout?aud=guest`,{method:"POST"}).catch(()=>undefined);setAuthenticated(false);setProfile(null);setWallet(null)}
- const grouped=useMemo(()=>history.reduce<Record<string,Entry[]>>((all,item)=>{const date=new Date(item.createdAt).toLocaleDateString("ru-RU",{day:"numeric",month:"long"});(all[date]??=[]).push(item);return all},{}),[history]);
- if(initializing)return <main className="wallet-loading" aria-busy="true" aria-label="Загрузка карты"><div/><span/><span/></main>;
- if(!authenticated||!profile||!wallet)return <GuestLogin mode={mode} setMode={setMode} identity={identity} message={message} devCode={devCode} requestOtp={requestOtp} verify={verify} pinLogin={pinLogin}/>;
- const primary=profile.portal.primaryColor||"#6352ee",mechanic=wallet.loyalty.mode,stampTarget=wallet.loyalty.target,stamps=wallet.loyalty.progress,remaining=wallet.loyalty.remaining,reward=wallet.loyalty.rewardTitle,discount=wallet.loyalty.discountPercent||0,discountMax=wallet.loyalty.target;
- if (authenticated && profile && wallet) return <ConsumerWalletHome profile={profile} wallet={wallet} rewards={rewards} history={history} qrOpen={cashierOpen} setQrOpen={setCashierOpen} tab={tab} setTab={setTab} signOut={signOut} />;
- return <main className="customer-app wallet-redesign-v11" style={{"--customer-brand":primary} as React.CSSProperties}><section className="wallet-focus-line"><span>Ваша карта</span><small>{profile.company}</small></section>
-  <header className="customer-header"><div className="customer-brand"><span className="customer-logo">{profile.logoUrl?<img src={profile.logoUrl} alt=""/>:profile.company.slice(0,1)}</span><span className="customer-brand-copy"><strong>{profile.company}</strong><small>Ваша карта клиента</small></span></div><button aria-label="Дополнительные действия" aria-expanded={menuOpen} onClick={()=>setMenuOpen(!menuOpen)}><MoreHorizontal/></button>{menuOpen&&<div className="customer-menu"><button onClick={()=>navigator.share?.({title:`Карта ${profile.company}`,url:location.href})}><Share2/>Поделиться картой</button><button onClick={signOut}><LogOut/>Выйти</button></div>}</header>
-  <div className="customer-screen">
-   {tab==="home"&&<><section className={`customer-hero mode-${mechanic}`}><small>{profile.firstName}</small>{mechanic==="stamps"?<><p>До подарка</p><h1>{remaining===0?"Награда доступна":`Ещё ${remaining} посещений`}</h1><div className="customer-stamps" role="img" aria-label={`${stamps} из ${stampTarget} посещений`}>{Array.from({length:stampTarget},(_,i)=><span className={i<stamps?"filled":""} key={i}>{i<stamps?<Check/>:null}</span>)}</div>{remaining===1&&<div className="customer-almost"><Sparkles/><span><strong>Подарок уже близко</strong><small>Ещё один визит — и вы получите «{reward}»</small></span></div>}<div className="customer-hero-reward"><Gift/><span><small>После {stampTarget}-го посещения</small><strong>{reward}</strong></span></div></>:mechanic==="tier"?<><p>Ваш уровень</p><h1>{wallet.level.current}</h1><div className="customer-progress"><i style={{width:`${wallet.level.progress}%`}}/></div><div className="customer-hero-reward"><Trophy/><span><small>До уровня {wallet.level.next}</small><strong>Ещё {wallet.level.remaining.toLocaleString("ru-RU")} ₸ покупок</strong></span></div></>:mechanic==="discount"?<><p>Ваша скидка</p><h1>{discount}%</h1><div className="customer-progress"><i style={{width:`${discount/discountMax*100}%`}}/></div><div className="customer-hero-reward"><Sparkles/><span><small>Максимальная скидка</small><strong>{discountMax}%</strong></span></div></>:<><p>Ваш баланс</p><h1>{Math.round(wallet.bonusValue||profile.points).toLocaleString("ru-RU")} ₸</h1><span className="customer-bonus-caption">{profile.points.toLocaleString("ru-RU")} бонусов</span>{wallet.bonusExpiry?.date?<div className="customer-expiry">{wallet.bonusExpiry.amount} бонусов сгорят {new Date(wallet.bonusExpiry.date).toLocaleDateString("ru-RU",{day:"numeric",month:"long"})}</div>:<div className="customer-no-expiry"><Check/>Бонусы не сгорают</div>}</>}<button className="customer-cashier-button" onClick={()=>setCashierOpen(true)}><QrCode/>Показать карту на кассе</button></section>
-    <section className="customer-next"><span><Gift/></span><div><small>Ближайшая награда</small><h2>{mechanic==="stamps"?reward:wallet.nextReward.title}</h2><p>{mechanic==="stamps"?(remaining===0?"Уже доступна":remaining===1?"Остался 1 визит":`Осталось ${remaining} посещений`):(wallet.nextReward.remaining===0?"Уже доступна":wallet.nextReward.remaining===1?"Остался 1 визит":`Осталось ${wallet.nextReward.remaining} посещений`)}</p></div></section>
-    {wallet.level.next!==wallet.level.current&&<section className="customer-level"><header><span><Trophy/></span><div><small>ВАШ УРОВЕНЬ</small><h2>{wallet.level.current}</h2></div><b>{wallet.level.remaining} бонусов до {wallet.level.next}</b></header><div><i style={{width:`${wallet.level.progress}%`}}/></div><small>{profile.points} / {wallet.level.nextMin}</small></section>}
-    <button className="customer-referral" onClick={()=>navigator.share?.({title:`Присоединяйтесь к ${profile.company}`,url:wallet.referralUrl})}><Share2/><span><strong>Пригласить друга</strong><small>Поделиться персональной ссылкой</small></span><ChevronRight/></button></>}
-   {tab==="rewards"&&<section className="customer-page"><header><small>Ваши награды</small><h1>Подарки за визиты</h1></header>{rewards.filter(x=>x.status==="available"||x.status==="reserved").map(item=><article className="customer-reward-card reward-available" key={item.id}><Gift/><div><small>Можно использовать</small><h2>{item.name}</h2><p>{item.expiresAt?`Используйте до ${new Date(item.expiresAt).toLocaleDateString("ru-RU",{day:"numeric",month:"long"})}: покажите карту сотруднику`:"Покажите карту сотруднику при следующем визите"}</p></div></article>)}<article className="customer-reward-card"><Gift/><div><small>Следующий подарок</small><h2>{mechanic==="stamps"?reward:wallet.nextReward.title}</h2><p>{mechanic==="stamps"?(remaining===0?"Можно получить сейчас":remaining===1?"Остался 1 визит":`Ещё ${remaining} посещений`):(wallet.nextReward.remaining===0?"Можно получить сейчас":wallet.nextReward.remaining===1?"Остался 1 визит":`Ещё ${wallet.nextReward.remaining} посещений`)}</p></div></article>{rewards.filter(x=>x.status==="redeemed"||x.status==="expired").map(item=><article className={`customer-reward-history reward-${item.status}`} key={item.id}><Check/><div><strong>{item.name}</strong><small>{item.status==="redeemed"?`Использована ${item.redeemedAt?new Date(item.redeemedAt).toLocaleString("ru-RU"):""}`:`Срок действия закончился ${item.expiresAt?new Date(item.expiresAt).toLocaleDateString("ru-RU"):""}`}</small></div></article>)}{!rewards.length&&remaining>0&&<div className="customer-empty"><Gift/><strong>Подарков пока нет</strong><p>Здесь появятся награды после выполнения условий программы.</p></div>}</section>}
-   {tab==="history"&&<section className="customer-page"><header><small>ИСТОРИЯ</small><h1>Ваши посещения и бонусы</h1></header>{Object.keys(grouped).length?Object.entries(grouped).map(([date,items])=><div className="customer-history-day" key={date}><h2>{date}</h2>{items.map((item,i)=><article key={i}><span className={item.operation}><History/></span><div><strong>{item.description||"Операция по карте"}</strong><small>Баланс после операции: {item.balanceAfter}</small></div><b>{item.operation==="credit"?"+":"−"}{item.amount}</b></article>)}</div>):<div className="customer-empty"><History/><strong>История пока пуста</strong><p>Здесь появятся посещения, начисления и использованные награды.</p></div>}</section>}
-  </div>
-  <nav className="customer-tabbar" aria-label="Навигация по карте"><button className={tab==="home"?"current":""} aria-current={tab==="home"?"page":undefined} onClick={()=>setTab("home")}><Home/><span>Главная</span></button><button className={tab==="rewards"?"current":""} aria-current={tab==="rewards"?"page":undefined} onClick={()=>setTab("rewards")}><Gift/><span>Награды</span></button><button className={tab==="history"?"current":""} aria-current={tab==="history"?"page":undefined} onClick={()=>setTab("history")}><History/><span>История</span></button></nav>
-  {cashierOpen&&<div ref={cashierDialog} className="cashier-card" role="dialog" aria-modal="true" aria-labelledby="cashier-title"><header><div><strong>{profile.company}</strong><small>Карта клиента</small></div><button onClick={()=>setCashierOpen(false)} aria-label="Закрыть"><X/></button></header><div><h1 id="cashier-title">Покажите этот код сотруднику</h1><span className="cashier-qr"><QRCodeSVG value={`tappix:customer:${profile.companySlug}:${profile.id}`} size={240} level="M"/></span><p>Не сканируется?</p><section className="cashier-human-code"><small>КОД КЛИЕНТА</small><strong>{wallet.customerCode.slice(0,3)} {wallet.customerCode.slice(3)}</strong><button onClick={()=>void navigator.clipboard.writeText(wallet.customerCode)}><Copy/>Скопировать код</button></section><p>Сотрудник может найти вас по этому 6-значному коду.</p></div></div>}
- </main>
+type Profile = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  points: number;
+  visits: number;
+  level: string;
+  company: string;
+  companySlug: string;
+  logoUrl: string;
+  portal: {
+    primaryColor?: string;
+    secondaryColor?: string;
+    themeMode?: string;
+    loyaltyMode?: string;
+    stampsTarget?: number;
+    stampReward?: string;
+    discountStart?: number;
+    discountStep?: number;
+    discountMax?: number;
+    visitsPerStep?: number;
+    referralBonus?: number;
+  };
+};
+type Entry = {
+  operation: string;
+  amount: number;
+  balanceAfter: number;
+  description: string;
+  createdAt: string;
+};
+type Wallet = {
+  customerCode: string;
+  level: {
+    current: string;
+    next: string;
+    progress: number;
+    remaining: number;
+    nextMin: number;
+  };
+  loyalty: {
+    mode: string;
+    eligible: boolean;
+    progress: number;
+    remaining: number;
+    target: number;
+    rewardTitle: string;
+    balancePoints: number;
+    balanceValue: number;
+    discountPercent?: number;
+  };
+  bonusValue: number;
+  bonusExpiry: { date?: string; amount: number };
+  nextReward: { title: string; remaining: number; target: number };
+  referralCode: string;
+  referralUrl: string;
+};
+type CustomerReward = {
+  id: string;
+  name: string;
+  description: string;
+  status: "available" | "reserved" | "redeemed" | "expired" | "cancelled";
+  issuedAt: string;
+  expiresAt?: string;
+  redeemedAt?: string;
+};
+const guestFetch = (url: string, init?: RequestInit) =>
+  fetch(url, {
+    ...init,
+    credentials: "include",
+    headers: { ...csrfHeaders("guest"), ...init?.headers },
+  });
+const COMPANY_KEY = "tappix_guest_company";
+function walletError(error: unknown) {
+  const text = error instanceof Error ? error.message : "";
+  if (/401|session|expired|истек/i.test(text))
+    return "Сессия истекла. Откройте карту ещё раз.";
+  if (/404|not found|не найден/i.test(text)) return "Карта клиента не найдена.";
+  if (/429|too many|лимит/i.test(text))
+    return "Слишком много попыток. Попробуйте через минуту.";
+  return "Не удалось выполнить действие. Попробуйте ещё раз.";
 }
 
-type LoginProps={mode:"whatsapp"|"code"|"pin";setMode:(m:"whatsapp"|"code"|"pin")=>void;identity:{company:string;phone:string};message:string;devCode:string;requestOtp:(e:FormEvent<HTMLFormElement>)=>void;verify:(e:FormEvent<HTMLFormElement>)=>void;pinLogin:(e:FormEvent<HTMLFormElement>)=>void};
-function GuestLogin({mode,setMode,identity,message,devCode,requestOtp,verify,pinLogin}:LoginProps){const content=mode==="whatsapp"?{Icon:MessageCircle,label:"ЦИФРОВАЯ КАРТА",title:"Откройте свою карту",text:"Получите одноразовый код в WhatsApp — без пароля."}:mode==="code"?{Icon:ShieldCheck,label:"БЕЗОПАСНЫЙ ВХОД",title:"Проверьте WhatsApp",text:`Код отправлен на ${identity.phone} и действует 5 минут.`}:{Icon:LockKeyhole,label:"РЕЗЕРВНЫЙ ВХОД",title:"Войти по короткому коду",text:"Используйте код, который вы получили при регистрации."};return <main className="premium-auth"><div className="premium-auth-brand"><span><WalletCards/></span><strong>Tappix Wallet</strong></div><form onSubmit={mode==="whatsapp"?requestOtp:mode==="code"?verify:pinLogin}><span className="auth-orb"><content.Icon/></span><small>{content.label}</small><h1>{content.title}</h1><p>{content.text}</p>{message&&<div role="alert">{message}</div>}{identity.company?<input name="company" type="hidden" value={identity.company} readOnly/>:<label>Компания<input name="company" required autoCapitalize="none" spellCheck={false} placeholder="например, dentline"/><small className="auth-hint">Название из ссылки на карту, которую вам выдали.</small></label>}{mode==="whatsapp"&&<label>Номер WhatsApp<input name="phone" type="tel" placeholder="+7 700 000 00 00" required/></label>}{mode==="code"&&<><>{devCode&&<div className="premium-dev">Тестовый код <b>{devCode}</b></div>}</><label>6-значный код<input name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoFocus required/></label></>}{mode==="pin"&&<><label>Телефон<input name="phone" type="tel" required/></label><label>Резервный код<input name="pin" inputMode="numeric" type="password" required/></label></>}<button>{mode==="whatsapp"?"Получить код":"Открыть карту"}<ChevronRight/></button><button type="button" className="auth-link" onClick={()=>setMode(mode==="pin"?"whatsapp":"pin")}>{mode==="pin"?"Войти через WhatsApp":"Войти по резервному коду"}</button></form></main>}
+export function PremiumGuestWallet() {
+  const [profile, setProfile] = useState<Profile | null>(null),
+    [wallet, setWallet] = useState<Wallet | null>(null),
+    [history, setHistory] = useState<Entry[]>([]),
+    [rewards, setRewards] = useState<CustomerReward[]>([]),
+    [authenticated, setAuthenticated] = useState(false),
+    [mode, setMode] = useState<"whatsapp" | "code" | "pin">("whatsapp"),
+    [identity, setIdentity] = useState({ company: "", phone: "" }),
+    [devCode, setDevCode] = useState(""),
+    [message, setMessage] = useState(""),
+    [initializing, setInitializing] = useState(true),
+    [tab, setTab] = useState<"home" | "rewards" | "history">("home"),
+    [cashierOpen, setCashierOpen] = useState(false),
+    [menuOpen, setMenuOpen] = useState(false);
+  const cashierDialog = useDialogFocusTrap<HTMLDivElement>(cashierOpen, () =>
+    setCashierOpen(false),
+  );
+  async function load(allowRefresh = true) {
+    let responses = await Promise.all([
+      guestFetch(`${base}/customer/me`),
+      guestFetch(`${base}/customer/wallet`),
+      guestFetch(`${base}/customer/history`),
+      guestFetch(`${base}/customer/rewards`),
+    ]);
+    if (responses[0].status === 401 && allowRefresh) {
+      const refreshed = await guestFetch(`${base}/auth/refresh?aud=guest`, {
+        method: "POST",
+      });
+      if (refreshed.ok) return load(false);
+    }
+    const [p, w, a, rewardData] = await Promise.all(
+      responses.map((r) => r.json()),
+    );
+    if (!p.success) throw new Error(p.error?.message || "Сессия истекла");
+    setAuthenticated(true);
+    setProfile(p.data);
+    setWallet(w.data);
+    setHistory(a.data || []);
+    setRewards(rewardData.success ? rewardData.data || [] : []);
+    if (p.data?.companySlug)
+      localStorage.setItem(COMPANY_KEY, p.data.companySlug);
+  }
+  useEffect(() => {
+    load()
+      .catch(() => setAuthenticated(false))
+      .finally(() => setInitializing(false));
+  }, []);
+  // Which company's card this is. The slug used to be hardcoded, so a returning
+  // guest of any other company could never sign back in.
+  useEffect(() => {
+    const slug =
+      new URLSearchParams(window.location.search).get("company") ||
+      localStorage.getItem(COMPANY_KEY) ||
+      "";
+    if (slug) setIdentity((current) => ({ ...current, company: slug }));
+  }, []);
+  function accept() {
+    setAuthenticated(true);
+    void load();
+  }
+  async function requestOtp(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setMessage("");
+    try {
+      const value = Object.fromEntries(new FormData(e.currentTarget)) as {
+        company: string;
+        phone: string;
+      };
+      const r = await fetch(`${base}/customer/otp/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(value),
+      }).then((x) => x.json());
+      if (!r.success) throw new Error(r.error?.message);
+      setIdentity(value);
+      setDevCode(r.data.devCode || "");
+      setMode("code");
+    } catch (error) {
+      setMessage(walletError(error));
+    }
+  }
+  async function verify(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    try {
+      const code = String(new FormData(e.currentTarget).get("code"));
+      const r = await guestFetch(`${base}/customer/otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...identity, code }),
+      }).then((x) => x.json());
+      if (!r.success) throw new Error(r.error?.message);
+      accept();
+    } catch (error) {
+      setMessage(walletError(error));
+    }
+  }
+  async function pinLogin(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    try {
+      const r = await guestFetch(`${base}/customer/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(new FormData(e.currentTarget))),
+      }).then((x) => x.json());
+      if (!r.success) throw new Error(r.error?.message);
+      accept();
+    } catch (error) {
+      setMessage(walletError(error));
+    }
+  }
+  async function signOut() {
+    await guestFetch(`${base}/auth/logout?aud=guest`, { method: "POST" }).catch(
+      () => undefined,
+    );
+    setAuthenticated(false);
+    setProfile(null);
+    setWallet(null);
+  }
+  const grouped = useMemo(
+    () =>
+      history.reduce<Record<string, Entry[]>>((all, item) => {
+        const date = new Date(item.createdAt).toLocaleDateString("ru-RU", {
+          day: "numeric",
+          month: "long",
+        });
+        (all[date] ??= []).push(item);
+        return all;
+      }, {}),
+    [history],
+  );
+  if (initializing)
+    return (
+      <main
+        className="wallet-loading"
+        aria-busy="true"
+        aria-label="Загрузка карты"
+      >
+        <div />
+        <span />
+        <span />
+      </main>
+    );
+  if (!authenticated || !profile || !wallet)
+    return (
+      <GuestLogin
+        mode={mode}
+        setMode={setMode}
+        identity={identity}
+        message={message}
+        devCode={devCode}
+        requestOtp={requestOtp}
+        verify={verify}
+        pinLogin={pinLogin}
+      />
+    );
+  const primary = profile.portal.primaryColor || "#6352ee",
+    mechanic = wallet.loyalty.mode,
+    stampTarget = wallet.loyalty.target,
+    stamps = wallet.loyalty.progress,
+    remaining = wallet.loyalty.remaining,
+    reward = wallet.loyalty.rewardTitle,
+    discount = wallet.loyalty.discountPercent || 0,
+    discountMax = wallet.loyalty.target;
+  if (authenticated && profile && wallet)
+    return (
+      <ConsumerWalletHome
+        profile={profile}
+        wallet={wallet}
+        rewards={rewards}
+        history={history}
+        qrOpen={cashierOpen}
+        setQrOpen={setCashierOpen}
+        tab={tab}
+        setTab={setTab}
+        signOut={signOut}
+      />
+    );
+  return (
+    <main
+      className="customer-app wallet-redesign-v11"
+      style={{ "--customer-brand": primary } as React.CSSProperties}
+    >
+      <section className="wallet-focus-line">
+        <span>Ваша карта</span>
+        <small>{profile.company}</small>
+      </section>
+      <header className="customer-header">
+        <div className="customer-brand">
+          <span className="customer-logo">
+            {profile.logoUrl ? (
+            <Image src={profile.logoUrl} alt="" width={36} height={36} unoptimized />
+            ) : (
+              profile.company.slice(0, 1)
+            )}
+          </span>
+          <span className="customer-brand-copy">
+            <strong>{profile.company}</strong>
+            <small>Ваша карта клиента</small>
+          </span>
+        </div>
+        <button
+          aria-label="Дополнительные действия"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          <MoreHorizontal />
+        </button>
+        {menuOpen && (
+          <div className="customer-menu">
+            <button
+              onClick={() =>
+                navigator.share?.({
+                  title: `Карта ${profile.company}`,
+                  url: location.href,
+                })
+              }
+            >
+              <Share2 />
+              Поделиться картой
+            </button>
+            <button onClick={signOut}>
+              <LogOut />
+              Выйти
+            </button>
+          </div>
+        )}
+      </header>
+      <div className="customer-screen">
+        {tab === "home" && (
+          <>
+            <section className={`customer-hero mode-${mechanic}`}>
+              <small>{profile.firstName}</small>
+              {mechanic === "stamps" ? (
+                <>
+                  <p>До подарка</p>
+                  <h1>
+                    {remaining === 0
+                      ? "Награда доступна"
+                      : `Ещё ${remaining} посещений`}
+                  </h1>
+                  <div
+                    className="customer-stamps"
+                    role="img"
+                    aria-label={`${stamps} из ${stampTarget} посещений`}
+                  >
+                    {Array.from({ length: stampTarget }, (_, i) => (
+                      <span className={i < stamps ? "filled" : ""} key={i}>
+                        {i < stamps ? <Check /> : null}
+                      </span>
+                    ))}
+                  </div>
+                  {remaining === 1 && (
+                    <div className="customer-almost">
+                      <Sparkles />
+                      <span>
+                        <strong>Подарок уже близко</strong>
+                        <small>Ещё один визит — и вы получите «{reward}»</small>
+                      </span>
+                    </div>
+                  )}
+                  <div className="customer-hero-reward">
+                    <Gift />
+                    <span>
+                      <small>После {stampTarget}-го посещения</small>
+                      <strong>{reward}</strong>
+                    </span>
+                  </div>
+                </>
+              ) : mechanic === "tier" ? (
+                <>
+                  <p>Ваш уровень</p>
+                  <h1>{wallet.level.current}</h1>
+                  <div className="customer-progress">
+                    <i style={{ width: `${wallet.level.progress}%` }} />
+                  </div>
+                  <div className="customer-hero-reward">
+                    <Trophy />
+                    <span>
+                      <small>До уровня {wallet.level.next}</small>
+                      <strong>
+                        Ещё {wallet.level.remaining.toLocaleString("ru-RU")} ₸
+                        покупок
+                      </strong>
+                    </span>
+                  </div>
+                </>
+              ) : mechanic === "discount" ? (
+                <>
+                  <p>Ваша скидка</p>
+                  <h1>{discount}%</h1>
+                  <div className="customer-progress">
+                    <i
+                      style={{ width: `${(discount / discountMax) * 100}%` }}
+                    />
+                  </div>
+                  <div className="customer-hero-reward">
+                    <Sparkles />
+                    <span>
+                      <small>Максимальная скидка</small>
+                      <strong>{discountMax}%</strong>
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>Ваш баланс</p>
+                  <h1>
+                    {Math.round(
+                      wallet.bonusValue || profile.points,
+                    ).toLocaleString("ru-RU")}{" "}
+                    ₸
+                  </h1>
+                  <span className="customer-bonus-caption">
+                    {profile.points.toLocaleString("ru-RU")} бонусов
+                  </span>
+                  {wallet.bonusExpiry?.date ? (
+                    <div className="customer-expiry">
+                      {wallet.bonusExpiry.amount} бонусов сгорят{" "}
+                      {new Date(wallet.bonusExpiry.date).toLocaleDateString(
+                        "ru-RU",
+                        { day: "numeric", month: "long" },
+                      )}
+                    </div>
+                  ) : (
+                    <div className="customer-no-expiry">
+                      <Check />
+                      Бонусы не сгорают
+                    </div>
+                  )}
+                </>
+              )}
+              <button
+                className="customer-cashier-button"
+                onClick={() => setCashierOpen(true)}
+              >
+                <QrCode />
+                Показать карту на кассе
+              </button>
+            </section>
+            <section className="customer-next">
+              <span>
+                <Gift />
+              </span>
+              <div>
+                <small>Ближайшая награда</small>
+                <h2>
+                  {mechanic === "stamps" ? reward : wallet.nextReward.title}
+                </h2>
+                <p>
+                  {mechanic === "stamps"
+                    ? remaining === 0
+                      ? "Уже доступна"
+                      : remaining === 1
+                        ? "Остался 1 визит"
+                        : `Осталось ${remaining} посещений`
+                    : wallet.nextReward.remaining === 0
+                      ? "Уже доступна"
+                      : wallet.nextReward.remaining === 1
+                        ? "Остался 1 визит"
+                        : `Осталось ${wallet.nextReward.remaining} посещений`}
+                </p>
+              </div>
+            </section>
+            {wallet.level.next !== wallet.level.current && (
+              <section className="customer-level">
+                <header>
+                  <span>
+                    <Trophy />
+                  </span>
+                  <div>
+                    <small>ВАШ УРОВЕНЬ</small>
+                    <h2>{wallet.level.current}</h2>
+                  </div>
+                  <b>
+                    {wallet.level.remaining} бонусов до {wallet.level.next}
+                  </b>
+                </header>
+                <div>
+                  <i style={{ width: `${wallet.level.progress}%` }} />
+                </div>
+                <small>
+                  {profile.points} / {wallet.level.nextMin}
+                </small>
+              </section>
+            )}
+            <button
+              className="customer-referral"
+              onClick={() =>
+                navigator.share?.({
+                  title: `Присоединяйтесь к ${profile.company}`,
+                  url: wallet.referralUrl,
+                })
+              }
+            >
+              <Share2 />
+              <span>
+                <strong>Пригласить друга</strong>
+                <small>Поделиться персональной ссылкой</small>
+              </span>
+              <ChevronRight />
+            </button>
+          </>
+        )}
+        {tab === "rewards" && (
+          <section className="customer-page">
+            <header>
+              <small>Ваши награды</small>
+              <h1>Подарки за визиты</h1>
+            </header>
+            {rewards
+              .filter(
+                (x) => x.status === "available" || x.status === "reserved",
+              )
+              .map((item) => (
+                <article
+                  className="customer-reward-card reward-available"
+                  key={item.id}
+                >
+                  <Gift />
+                  <div>
+                    <small>Можно использовать</small>
+                    <h2>{item.name}</h2>
+                    <p>
+                      {item.expiresAt
+                        ? `Используйте до ${new Date(item.expiresAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}: покажите карту сотруднику`
+                        : "Покажите карту сотруднику при следующем визите"}
+                    </p>
+                  </div>
+                </article>
+              ))}
+            <article className="customer-reward-card">
+              <Gift />
+              <div>
+                <small>Следующий подарок</small>
+                <h2>
+                  {mechanic === "stamps" ? reward : wallet.nextReward.title}
+                </h2>
+                <p>
+                  {mechanic === "stamps"
+                    ? remaining === 0
+                      ? "Можно получить сейчас"
+                      : remaining === 1
+                        ? "Остался 1 визит"
+                        : `Ещё ${remaining} посещений`
+                    : wallet.nextReward.remaining === 0
+                      ? "Можно получить сейчас"
+                      : wallet.nextReward.remaining === 1
+                        ? "Остался 1 визит"
+                        : `Ещё ${wallet.nextReward.remaining} посещений`}
+                </p>
+              </div>
+            </article>
+            {rewards
+              .filter((x) => x.status === "redeemed" || x.status === "expired")
+              .map((item) => (
+                <article
+                  className={`customer-reward-history reward-${item.status}`}
+                  key={item.id}
+                >
+                  <Check />
+                  <div>
+                    <strong>{item.name}</strong>
+                    <small>
+                      {item.status === "redeemed"
+                        ? `Использована ${item.redeemedAt ? new Date(item.redeemedAt).toLocaleString("ru-RU") : ""}`
+                        : `Срок действия закончился ${item.expiresAt ? new Date(item.expiresAt).toLocaleDateString("ru-RU") : ""}`}
+                    </small>
+                  </div>
+                </article>
+              ))}
+            {!rewards.length && remaining > 0 && (
+              <div className="customer-empty">
+                <Gift />
+                <strong>Подарков пока нет</strong>
+                <p>
+                  Здесь появятся награды после выполнения условий программы.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+        {tab === "history" && (
+          <section className="customer-page">
+            <header>
+              <small>ИСТОРИЯ</small>
+              <h1>Ваши посещения и бонусы</h1>
+            </header>
+            {Object.keys(grouped).length ? (
+              Object.entries(grouped).map(([date, items]) => (
+                <div className="customer-history-day" key={date}>
+                  <h2>{date}</h2>
+                  {items.map((item, i) => (
+                    <article key={i}>
+                      <span className={item.operation}>
+                        <History />
+                      </span>
+                      <div>
+                        <strong>
+                          {item.description || "Операция по карте"}
+                        </strong>
+                        <small>
+                          Баланс после операции: {item.balanceAfter}
+                        </small>
+                      </div>
+                      <b>
+                        {item.operation === "credit" ? "+" : "−"}
+                        {item.amount}
+                      </b>
+                    </article>
+                  ))}
+                </div>
+              ))
+            ) : (
+              <div className="customer-empty">
+                <History />
+                <strong>История пока пуста</strong>
+                <p>
+                  Здесь появятся посещения, начисления и использованные награды.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+      <nav className="customer-tabbar" aria-label="Навигация по карте">
+        <button
+          className={tab === "home" ? "current" : ""}
+          aria-current={tab === "home" ? "page" : undefined}
+          onClick={() => setTab("home")}
+        >
+          <Home />
+          <span>Главная</span>
+        </button>
+        <button
+          className={tab === "rewards" ? "current" : ""}
+          aria-current={tab === "rewards" ? "page" : undefined}
+          onClick={() => setTab("rewards")}
+        >
+          <Gift />
+          <span>Награды</span>
+        </button>
+        <button
+          className={tab === "history" ? "current" : ""}
+          aria-current={tab === "history" ? "page" : undefined}
+          onClick={() => setTab("history")}
+        >
+          <History />
+          <span>История</span>
+        </button>
+      </nav>
+      {cashierOpen && (
+        <div
+          ref={cashierDialog}
+          className="cashier-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cashier-title"
+        >
+          <header>
+            <div>
+              <strong>{profile.company}</strong>
+              <small>Карта клиента</small>
+            </div>
+            <button onClick={() => setCashierOpen(false)} aria-label="Закрыть">
+              <X />
+            </button>
+          </header>
+          <div>
+            <h1 id="cashier-title">Покажите этот код сотруднику</h1>
+            <span className="cashier-qr">
+              <QRCodeSVG
+                value={`tappix:customer:${profile.companySlug}:${profile.id}`}
+                size={240}
+                level="M"
+              />
+            </span>
+            <p>Не сканируется?</p>
+            <section className="cashier-human-code">
+              <small>КОД КЛИЕНТА</small>
+              <strong>
+                {wallet.customerCode.slice(0, 3)} {wallet.customerCode.slice(3)}
+              </strong>
+              <button
+                onClick={() =>
+                  void navigator.clipboard.writeText(wallet.customerCode)
+                }
+              >
+                <Copy />
+                Скопировать код
+              </button>
+            </section>
+            <p>Сотрудник может найти вас по этому 6-значному коду.</p>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+type LoginProps = {
+  mode: "whatsapp" | "code" | "pin";
+  setMode: (m: "whatsapp" | "code" | "pin") => void;
+  identity: { company: string; phone: string };
+  message: string;
+  devCode: string;
+  requestOtp: (e: FormEvent<HTMLFormElement>) => void;
+  verify: (e: FormEvent<HTMLFormElement>) => void;
+  pinLogin: (e: FormEvent<HTMLFormElement>) => void;
+};
+function GuestLogin({
+  mode,
+  setMode,
+  identity,
+  message,
+  devCode,
+  requestOtp,
+  verify,
+  pinLogin,
+}: LoginProps) {
+  const content =
+    mode === "whatsapp"
+      ? {
+          Icon: MessageCircle,
+          label: "ЦИФРОВАЯ КАРТА",
+          title: "Откройте свою карту",
+          text: "Получите одноразовый код в WhatsApp — без пароля.",
+        }
+      : mode === "code"
+        ? {
+            Icon: ShieldCheck,
+            label: "БЕЗОПАСНЫЙ ВХОД",
+            title: "Проверьте WhatsApp",
+            text: `Код отправлен на ${identity.phone} и действует 5 минут.`,
+          }
+        : {
+            Icon: LockKeyhole,
+            label: "РЕЗЕРВНЫЙ ВХОД",
+            title: "Войти по короткому коду",
+            text: "Используйте код, который вы получили при регистрации.",
+          };
+  return (
+    <main className="premium-auth">
+      <div className="premium-auth-brand">
+        <span>
+          <WalletCards />
+        </span>
+        <strong>Tappix Wallet</strong>
+      </div>
+      <form
+        onSubmit={
+          mode === "whatsapp" ? requestOtp : mode === "code" ? verify : pinLogin
+        }
+      >
+        <span className="auth-orb">
+          <content.Icon />
+        </span>
+        <small>{content.label}</small>
+        <h1>{content.title}</h1>
+        <p>{content.text}</p>
+        {message && <div role="alert">{message}</div>}
+        {identity.company ? (
+          <input
+            name="company"
+            type="hidden"
+            value={identity.company}
+            readOnly
+          />
+        ) : (
+          <label>
+            Компания
+            <input
+              name="company"
+              required
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="например, dentline"
+            />
+            <small className="auth-hint">
+              Название из ссылки на карту, которую вам выдали.
+            </small>
+          </label>
+        )}
+        {mode === "whatsapp" && (
+          <label>
+            Номер WhatsApp
+            <input
+              name="phone"
+              type="tel"
+              placeholder="+7 700 000 00 00"
+              required
+            />
+          </label>
+        )}
+        {mode === "code" && (
+          <>
+            <>
+              {devCode && (
+                <div className="premium-dev">
+                  Тестовый код <b>{devCode}</b>
+                </div>
+              )}
+            </>
+            <label>
+              6-значный код
+              <input
+                name="code"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                autoFocus
+                required
+              />
+            </label>
+          </>
+        )}
+        {mode === "pin" && (
+          <>
+            <label>
+              Телефон
+              <input name="phone" type="tel" required />
+            </label>
+            <label>
+              Резервный код
+              <input name="pin" inputMode="numeric" type="password" required />
+            </label>
+          </>
+        )}
+        <button>
+          {mode === "whatsapp" ? "Получить код" : "Открыть карту"}
+          <ChevronRight />
+        </button>
+        <button
+          type="button"
+          className="auth-link"
+          onClick={() => setMode(mode === "pin" ? "whatsapp" : "pin")}
+        >
+          {mode === "pin" ? "Войти через WhatsApp" : "Войти по резервному коду"}
+        </button>
+      </form>
+    </main>
+  );
+}

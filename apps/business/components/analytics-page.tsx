@@ -8,6 +8,7 @@ import { Notice } from "./management-shared";
 
 type AnalyticsData = {
   days: number;
+  comparisonAvailable: boolean;
   totals: { customers: number; visits: number; pointsIssued: number; pointsRedeemed: number; outstanding: number };
   previous: { visits: number; active: number; new: number; pointsIssued: number };
   series: { date: string; customers: number; visits: number; points: number; firstVisits: number; repeatVisits: number }[];
@@ -42,12 +43,13 @@ type ProAnalytics = {
 };
 type BonusLiability = { currency: string; issued: number; active: number; redeemed: number; expired: number; liability: number; expectedRedemptionCost: number };
 type BusinessOutcomes = {days:number;retention:{returnedCustomers:number;repeatVisits:number};automations:{messages:number;reachedCustomers:number;returnedCustomers:number;attributedRevenue:number};referrals:{newCustomers:number;repeatCustomers:number;revenue:number};rewards:{bestName:string;redemptions:number};revenue:{members:number;campaignAttributed:number};previous:{returnedCustomers:number;automationReturned:number;automationRevenue:number;referralCustomers:number;referralRevenue:number;rewardRedemptions:number;memberRevenue:number};branches:{id:string;name:string;customers:number;returnedCustomers:number;visits:number;revenue:number;rewards:number}[]};
-function MetricDelta({ current, previous }: { current: number; previous: number }) {
-  const value = previous === 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
+function MetricDelta({ current, previous, available = true }: { current: number; previous: number; available?: boolean }) {
+  if (!available || previous === 0) return <small className="metric-delta neutral">Недостаточно данных для сравнения</small>;
+  const value = ((current - previous) / previous) * 100;
   return <small className={value >= 0 ? "metric-delta up" : "metric-delta down"}>{value >= 0 ? "+" : ""}{value.toFixed(0)}% к прошлому периоду</small>;
 }
 function OutcomeDelta({current,previous}:{current:number;previous:number}){
-  if(previous===0)return current>0?<small className="outcome-delta new">Новый результат за период</small>:<small className="outcome-delta neutral">Без изменений</small>;
+  if(previous===0)return <small className="outcome-delta neutral">Недостаточно данных для сравнения</small>;
   const value=(current-previous)/previous*100;
   return <small className={`outcome-delta ${value>=0?"up":"down"}`}>{value>=0?"↑":"↓"} {Math.abs(value).toFixed(0)}% к прошлому периоду</small>;
 }
@@ -120,19 +122,19 @@ export function AnalyticsPage() {
               <Users />
               <span>Активных гостей</span>
               <strong>{data.audience.active}</strong>
-              <MetricDelta current={data.audience.active} previous={data.previous.active} />
+              <MetricDelta current={data.audience.active} previous={data.previous.active} available={data.comparisonAvailable} />
             </article>
             <article>
               <Building2 />
               <span>Посещений за период</span>
               <strong>{data.totals.visits}</strong>
-              <MetricDelta current={data.totals.visits} previous={data.previous.visits} />
+              <MetricDelta current={data.totals.visits} previous={data.previous.visits} available={data.comparisonAvailable} />
             </article>
             {tier==="starter"&&<article>
               <UserCheck />
               <span>Новых гостей</span>
               <strong>{data.audience.new}</strong>
-              <MetricDelta current={data.audience.new} previous={data.previous.new} />
+              <MetricDelta current={data.audience.new} previous={data.previous.new} available={data.comparisonAvailable} />
             </article>}
             {tier!=="starter"&&<article>
               <Repeat2 />
@@ -149,18 +151,22 @@ export function AnalyticsPage() {
               <small>Не возвращались более 45 дней</small>
             </article>}
           </div>
-          {tier==="starter"&&<section className="starter-pulse"><div><small>ПУЛЬС ЗА ПЕРИОД</small><strong>{Math.min(100,Math.round(data.audience.retentionRate*.6+Math.min(40,data.audience.active*2)))}</strong><span>из 100</span></div><div><h2>{data.totals.visits?"Программа работает":"Начните собирать визиты"}</h2><p>{data.audience.new>0?`${data.audience.new} новых гостей уже в базе. Следующая цель — вернуть их повторно.`:"Активируйте NFC/QR и зарегистрируйте первых гостей."}</p><Link href={data.totals.visits?"/customers":"/devices"}>{data.totals.visits?"Открыть клиентов":"Настроить NFC/QR"}</Link></div></section>}
+          {tier==="starter"&&<section className="starter-pulse"><div><small>ПОВТОРНЫЕ ВИЗИТЫ</small><strong>{data.audience.retentionRate.toFixed(0)}%</strong><span>за период</span></div><div><h2>{data.totals.visits?"Программа собирает реальные визиты":"Здесь появится результат программы"}</h2><p>{data.audience.new>0?`${data.audience.new} новых гостей уже в базе. Следующая цель — вернуть их повторно.`:"Проведите первый визит в Staff Mode — после этого появится статистика возвратов."}</p><Link href={data.totals.visits?"/customers":"/scanner"}>{data.totals.visits?"Открыть клиентов":"Открыть Staff Mode"}</Link></div></section>}
           <section className="analytics-answer">
             <TrendingUp />
             <div>
               <span>ГЛАВНЫЙ ВЫВОД</span>
               <h2>
-                {data.audience.retentionRate >= 50
+                {data.totals.visits === 0
+                  ? "Пока недостаточно данных для вывода"
+                  : data.audience.retentionRate >= 50
                   ? "Клиенты хорошо возвращаются"
                   : "Есть потенциал увеличить повторные визиты"}
               </h2>
               <p>
-                {data.audience.atRisk > 0
+                {data.totals.visits === 0
+                  ? "Проведите первые посещения — рекомендации появятся на основе реального поведения клиентов."
+                  : data.audience.atRisk > 0
                   ? `${data.audience.atRisk} клиентам стоит отправить персональное предложение.`
                   : data.audience.new > data.audience.repeatActive
                     ? "Новых гостей больше, чем повторных. Помогите им сделать второй визит."

@@ -53,6 +53,9 @@ type customer struct {
 	CreatedAt      time.Time  `json:"createdAt"`
 	FavoriteBranch string     `json:"favoriteBranch,omitempty"`
 	LastBranch     string     `json:"lastBranch,omitempty"`
+	LastVisit      *time.Time `json:"lastVisit,omitempty"`
+	Segment        string     `json:"segment,omitempty"`
+	Status         string     `json:"status,omitempty"`
 }
 type customerInput struct {
 	FirstName string `json:"firstName"`
@@ -86,6 +89,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	mux.HandleFunc("GET /api/v1/public/guest/{token}", a.publicGuestPortal)
 	mux.HandleFunc("GET /api/v1/public/referral/{code}", a.publicReferral)
 	mux.HandleFunc("GET /api/v1/public/sites/{slug}", a.publicWebsite)
+	mux.HandleFunc("GET /api/v1/public/plans", a.publicPlans)
 	mux.HandleFunc("POST /api/v1/public/sites/{slug}/bookings", a.publicCreateBooking)
 	mux.HandleFunc("GET /api/v1/public/files/{id}", a.publicFile)
 	mux.HandleFunc("GET /api/v1/public/reports/{id}", a.publicReportArtifact)
@@ -108,7 +112,7 @@ func New(db *pgxpool.Pool, redisClient *redis.Client, jwtSecret string) http.Han
 	protected.Handle("DELETE /api/v1/admin/support-sessions/{id}", a.requireRoles(http.HandlerFunc(a.revokeSupportSession), "super_admin"))
 	protected.Handle("GET /api/v1/workspaces", a.requireRoles(http.HandlerFunc(a.listWorkspaces), "company_owner", "employee"))
 	protected.Handle("POST /api/v1/workspaces/{id}/switch", a.requireRoles(http.HandlerFunc(a.switchWorkspace), "company_owner", "employee"))
-	protected.Handle("GET /api/v1/dashboard", a.requireRoles(http.HandlerFunc(a.dashboard), "company_owner"))
+	protected.Handle("GET /api/v1/dashboard", a.requireRoles(http.HandlerFunc(a.dashboardV2), "company_owner"))
 	protected.Handle("GET /api/v1/customers", a.requireModule("crm", a.requireRoles(http.HandlerFunc(a.listCustomers), "company_owner")))
 	protected.Handle("POST /api/v1/staff/customers/lookup", a.requireModule("loyalty", a.requirePermission("customers.read", http.HandlerFunc(a.customerByCode))))
 	protected.Handle("GET /api/v1/customers/export", a.requireModule("crm", a.requireRoles(http.HandlerFunc(a.exportCustomers), "company_owner")))
@@ -361,20 +365,33 @@ func (a *api) listCustomers(w http.ResponseWriter, r *http.Request) {
 	birthday := strings.TrimSpace(r.URL.Query().Get("birthday"))
 	registeredFrom := strings.TrimSpace(r.URL.Query().Get("registeredFrom"))
 	registeredTo := strings.TrimSpace(r.URL.Query().Get("registeredTo"))
+	segment := strings.TrimSpace(r.URL.Query().Get("segment"))
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	lastVisit := strings.TrimSpace(r.URL.Query().Get("lastVisit"))
+	rewardState := strings.TrimSpace(r.URL.Query().Get("rewardState"))
 	minPoints := clamp(parseInt(r.URL.Query().Get("minPoints"), 0), 0, 100000000)
 	limit := clamp(parseInt(r.URL.Query().Get("limit"), 20), 1, 100)
 	page := clamp(parseInt(r.URL.Query().Get("page"), 1), 1, 100000)
-	orders := map[string]string{"createdAt": "created_at", "name": "last_name", "points": "total_points", "visits": "total_visits"}
+	orders := map[string]string{"createdAt": "c.created_at", "name": "c.last_name", "points": "c.total_points", "visits": "c.total_visits"}
 	orderColumn := orders[r.URL.Query().Get("sort")]
 	if orderColumn == "" {
-		orderColumn = "created_at"
+		orderColumn = "c.created_at"
 	}
 	orderDirection := "DESC"
 	if strings.EqualFold(r.URL.Query().Get("order"), "asc") {
 		orderDirection = "ASC"
 	}
-	query := fmt.Sprintf(`SELECT id,first_name,last_name,phone,birthday,total_points,total_visits,level,created_at,count(*) OVER() FROM customers c WHERE company_id=$1 AND deleted_at IS NULL AND (first_name ILIKE $2 OR last_name ILIKE $2 OR phone ILIKE $2) AND ($3='' OR level=$3) AND total_points >= $4 AND ($5='' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=c.company_id AND v.customer_id=c.id AND v.branch_id=nullif($5,'')::uuid)) AND ($6='' OR ($6='today' AND extract(month from birthday)=extract(month from current_date) AND extract(day from birthday)=extract(day from current_date)) OR ($6='month' AND extract(month from birthday)=extract(month from current_date))) AND ($7='' OR created_at::date >= nullif($7,'')::date) AND ($8='' OR created_at::date <= nullif($8,'')::date) ORDER BY %s %s LIMIT $9 OFFSET $10`, orderColumn, orderDirection)
-	rows, err := a.db.Query(r.Context(), query, companyID(r), search, level, minPoints, branch, birthday, registeredFrom, registeredTo, limit, (page-1)*limit)
+	query := fmt.Sprintf(`SELECT c.id,c.first_name,c.last_name,c.phone,c.birthday,c.total_points,c.total_visits,c.level,c.created_at,last_visit.created_at,coalesce(last_visit.branch,''),
+		CASE WHEN c.total_visits>=10 THEN 'loyal' WHEN last_visit.created_at<now()-interval '90 days' OR (last_visit.created_at IS NULL AND c.created_at<now()-interval '30 days') THEN 'inactive' WHEN last_visit.created_at<now()-interval '60 days' THEN 'at_risk' WHEN c.total_visits>=2 THEN 'active' ELSE 'new' END segment,
+		CASE WHEN last_visit.created_at<now()-interval '90 days' THEN 'inactive' ELSE 'active' END status,count(*) OVER()
+		FROM customers c LEFT JOIN LATERAL (SELECT v.created_at,b.name branch FROM visits v JOIN branches b ON b.id=v.branch_id WHERE v.company_id=c.company_id AND v.customer_id=c.id AND v.reversed_at IS NULL ORDER BY v.created_at DESC LIMIT 1) last_visit ON true
+		WHERE c.company_id=$1 AND c.deleted_at IS NULL AND (c.first_name ILIKE $2 OR c.last_name ILIKE $2 OR c.phone ILIKE $2) AND ($3='' OR c.level=$3) AND c.total_points >= $4 AND ($5='' OR EXISTS(SELECT 1 FROM visits v WHERE v.company_id=c.company_id AND v.customer_id=c.id AND v.branch_id=nullif($5,'')::uuid)) AND ($6='' OR ($6='today' AND extract(month from c.birthday)=extract(month from current_date) AND extract(day from c.birthday)=extract(day from current_date)) OR ($6='month' AND extract(month from c.birthday)=extract(month from current_date))) AND ($7='' OR c.created_at::date >= nullif($7,'')::date) AND ($8='' OR c.created_at::date <= nullif($8,'')::date)
+		AND ($9='' OR $9=CASE WHEN c.total_visits>=10 THEN 'loyal' WHEN last_visit.created_at<now()-interval '90 days' OR (last_visit.created_at IS NULL AND c.created_at<now()-interval '30 days') THEN 'inactive' WHEN last_visit.created_at<now()-interval '60 days' THEN 'at_risk' WHEN c.total_visits>=2 THEN 'active' ELSE 'new' END)
+		AND ($10='' OR $10=CASE WHEN last_visit.created_at<now()-interval '90 days' THEN 'inactive' ELSE 'active' END)
+		AND ($11='' OR ($11='30d' AND last_visit.created_at>=now()-interval '30 days') OR ($11='90d' AND last_visit.created_at>=now()-interval '90 days') OR ($11='older' AND (last_visit.created_at<now()-interval '90 days' OR last_visit.created_at IS NULL)))
+		AND ($12='' OR ($12='available' AND EXISTS(SELECT 1 FROM customer_rewards cr WHERE cr.company_id=c.company_id AND cr.customer_id=c.id AND cr.status='available')) OR ($12='close' AND c.total_visits>0))
+		ORDER BY %s %s LIMIT $13 OFFSET $14`, orderColumn, orderDirection)
+	rows, err := a.db.Query(r.Context(), query, companyID(r), search, level, minPoints, branch, birthday, registeredFrom, registeredTo, segment, status, lastVisit, rewardState, limit, (page-1)*limit)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить клиентов")
 		return
@@ -384,7 +401,7 @@ func (a *api) listCustomers(w http.ResponseWriter, r *http.Request) {
 	total := 0
 	for rows.Next() {
 		var c customer
-		if err = rows.Scan(&c.ID, &c.FirstName, &c.LastName, &c.Phone, &c.Birthday, &c.TotalPoints, &c.TotalVisits, &c.Level, &c.CreatedAt, &total); err != nil {
+		if err = rows.Scan(&c.ID, &c.FirstName, &c.LastName, &c.Phone, &c.Birthday, &c.TotalPoints, &c.TotalVisits, &c.Level, &c.CreatedAt, &c.LastVisit, &c.LastBranch, &c.Segment, &c.Status, &total); err != nil {
 			fail(w, 500, "DATABASE_ERROR", "Не удалось прочитать клиентов")
 			return
 		}

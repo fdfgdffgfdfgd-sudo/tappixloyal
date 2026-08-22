@@ -44,8 +44,8 @@ func (a *api) customerRegister(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Token == "" || strings.TrimSpace(in.FirstName) == "" || strings.TrimSpace(in.LastName) == "" || len(in.Phone) < 7 || !in.Consent {
-		fail(w, 422, "VALIDATION_ERROR", "Заполните имя, фамилию, телефон и подтвердите согласие")
+	if in.Token == "" || strings.TrimSpace(in.FirstName) == "" || len(in.Phone) < 7 || !in.Consent {
+		fail(w, 422, "VALIDATION_ERROR", "Укажите имя, телефон и подтвердите согласие")
 		return
 	}
 	var company, device, branch string

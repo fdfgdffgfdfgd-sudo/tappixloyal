@@ -1,21 +1,502 @@
 "use client";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Camera, CameraOff, CheckCircle2, Gift, Keyboard, LoaderCircle, Minus, Plus, RotateCcw, ScanLine, ShieldCheck, UserRound } from "lucide-react";
+import {
+  AlertTriangle,
+  Camera,
+  CameraOff,
+  CheckCircle2,
+  Gift,
+  Keyboard,
+  LoaderCircle,
+  Minus,
+  Plus,
+  RotateCcw,
+  ScanLine,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
-type Customer={id:string;firstName:string;lastName:string;phone?:string;phoneMasked?:string;totalPoints:number;totalVisits:number};type Branch={id:string;name:string;active:boolean};type Progress={name:string;currentValue:number;targetValue:number};type Reward={id:string;name:string;status:string};
-function lookupId(raw:string){const value=raw.trim(),m=value.match(/^tappix:customer:[a-z0-9-]+:([0-9a-f-]{36})$/i);return m?.[1]||(/^[0-9a-f-]{36}$/i.test(value)?value:"")}
-export function StaffScanner(){
- const [branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState(""),[customer,setCustomer]=useState<Customer|null>(null),[progress,setProgress]=useState<Progress|null>(null),[rewards,setRewards]=useState<Reward[]>([]),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[scanning,setScanning]=useState(false),[success,setSuccess]=useState(""),[operation,setOperation]=useState<"credit"|"debit"|null>(null),[amount,setAmount]=useState(""),[reason,setReason]=useState("");
- const inputRef=useRef<HTMLInputElement>(null),reader=useRef<{stop:()=>Promise<void>;clear:()=>void}|null>(null);
- useEffect(()=>{api<Branch[]>("/branches").then(items=>{const active=items.filter(x=>x.active);setBranches(active);setBranchId(active[0]?.id||"")}).catch(()=>setMessage("Не удалось загрузить филиалы"));return()=>{void reader.current?.stop().catch(()=>undefined)}},[]);
- async function find(raw:string){setBusy(true);setMessage("");try{const id=lookupId(raw),value=raw.replace(/\s/g,"");let found:Customer;if(!id&&/^\d{6}$/.test(value))found=await api<Customer>("/staff/customers/lookup",{method:"POST",body:JSON.stringify({code:value})});else if(id)found=await api<Customer>(`/customers/${id}`);else{const r=await api<{items:Customer[]}>(`/customers?search=${encodeURIComponent(raw)}&limit=2`);if(r.items.length!==1)throw new Error(r.items.length?"Уточните имя или телефон":"Клиент не найден");found=r.items[0]}const [p,r]=await Promise.all([api<Progress[]>(`/customers/${found.id}/reward-progress`),api<Reward[]>(`/customers/${found.id}/rewards`)]);setCustomer(found);setProgress(p[0]||null);setRewards(r)}catch(e){setMessage(e instanceof Error?e.message:"Клиент не найден")}finally{setBusy(false)}}
- async function stop(){if(reader.current){await reader.current.stop().catch(()=>undefined);reader.current.clear();reader.current=null}setScanning(false)}
- async function scan(){try{const {Html5Qrcode}=await import("html5-qrcode");const x=new Html5Qrcode("staff-reader");reader.current=x;setScanning(true);await x.start({facingMode:"environment"},{fps:10,qrbox:{width:230,height:230}},code=>{void stop();void find(code)},()=>undefined)}catch{setScanning(false);setMessage("Нет доступа к камере. Введите код клиента вручную.")}}
- async function visit(){if(!customer||!branchId)return;setBusy(true);try{const r=await api<{totalVisits:number;pointsAdded:number}>("/visits",{method:"POST",body:JSON.stringify({customerId:customer.id,branchId,comment:"Staff Mode"})});setCustomer({...customer,totalVisits:r.totalVisits,totalPoints:customer.totalPoints+r.pointsAdded});setSuccess(`Посещение добавлено · ${r.totalVisits} посещений`)}catch(e){setMessage(e instanceof Error?e.message:"Не удалось выполнить операцию")}finally{setBusy(false)}}
- async function redeem(reward:Reward){if(!customer||!branchId)return;setBusy(true);try{await api(`/rewards/${reward.id}/redeem`,{method:"POST",body:JSON.stringify({branchId,reason:"Staff Mode",idempotencyKey:crypto.randomUUID()})});setSuccess("Награда использована")}catch(e){setMessage(e instanceof Error?e.message:"Не удалось использовать награду")}finally{setBusy(false)}}
- async function adjust(e:FormEvent){e.preventDefault();if(!customer||!operation||!branchId)return;setBusy(true);try{const r=await api<{balance?:number;approvalRequired?:boolean}>(`/customers/${customer.id}/bonus`,{method:"POST",body:JSON.stringify({operation,amount:Number(amount),description:reason,branchId,idempotencyKey:crypto.randomUUID()})});setCustomer({...customer,totalPoints:r.balance??customer.totalPoints});setSuccess(r.approvalRequired?"Заявка отправлена владельцу":"Баланс обновлён");setOperation(null);setAmount("");setReason("")}catch(e){setMessage(e instanceof Error?e.message:"Не удалось выполнить операцию")}finally{setBusy(false)}}
- function reset(){setCustomer(null);setProgress(null);setRewards([]);setSuccess("");setMessage("");requestAnimationFrame(()=>inputRef.current?.focus())}
- if(customer)return <SectionShell active="/scanner" title="Рабочее место" subtitle="Операция у кассы"><main className="staff-operational-screen"><header className="staff-service-header"><button onClick={reset}><RotateCcw/>Следующий клиент</button><span><small>ОБСЛУЖИВАНИЕ</small><strong>{branches.find(x=>x.id===branchId)?.name||"Филиал"}</strong></span></header>{success&&<div className="staff-success-state" role="status"><CheckCircle2/><div><strong>{success}</strong><small>Операция сохранена в истории</small></div></div>}<section className="staff-customer-state"><header><span className="staff-customer-avatar">{customer.firstName.slice(0,1)}</span><div><small>КЛИЕНТ</small><h2>{customer.firstName} {customer.lastName}</h2><p>{customer.phoneMasked||customer.phone||"Код подтверждён"}</p></div></header><div className="staff-loyalty-state">{progress?<><small>ПРОГРЕСС ДО НАГРАДЫ</small><strong>{progress.currentValue} из {progress.targetValue} посещений</strong><span>{progress.name} · осталось {Math.max(0,progress.targetValue-progress.currentValue)}</span></>:<><small>БАЛАНС</small><strong>{customer.totalPoints} бонусов</strong><span>Доступно для операций</span></>}</div><label className="staff-branch-select">Точка<select value={branchId} onChange={e=>setBranchId(e.target.value)}>{branches.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label></section><section className="staff-actions-primary"><button disabled={busy||!branchId} onClick={()=>void visit()}><CheckCircle2/><span><strong>Добавить посещение</strong><small>Начислить по программе</small></span></button>{rewards.filter(x=>x.status==="available").map(x=><button key={x.id} disabled={busy} onClick={()=>void redeem(x)}><Gift/><span><strong>Использовать награду</strong><small>{x.name}</small></span></button>)}</section><section className="staff-actions-secondary"><button onClick={()=>setOperation("credit")}><Plus/>Начислить бонусы</button><button onClick={()=>setOperation("debit")}><Minus/>Списать бонусы</button></section>{operation&&<form className="staff-inline-form" onSubmit={adjust}><header><strong>{operation==="credit"?"Начислить бонусы":"Списать бонусы"}</strong><button type="button" onClick={()=>setOperation(null)}>Отмена</button></header><label>Количество<input type="number" min="1" value={amount} onChange={e=>setAmount(e.target.value)} required autoFocus/></label><label>Причина<input value={reason} onChange={e=>setReason(e.target.value)} required minLength={4}/></label><button className="primary-action" disabled={busy}>Подтвердить</button></form>}<p className="staff-safe-note"><ShieldCheck/>Операции записываются в историю.</p></main></SectionShell>;
- return <SectionShell active="/scanner" title="Рабочее место сотрудника" subtitle="Найдите клиента и выполните одну операцию"><main className="staff-lookup-screen"><header className="staff-lookup-header"><div><small>STAFF MODE</small><h2>Найти клиента</h2><p>Сканируйте карту или используйте короткий код.</p></div><span><ShieldCheck/>Только операции у кассы</span></header><section className="staff-lookup-workspace"><div className="staff-scan-primary"><div id="staff-reader" className={scanning?"active":""}/>{!scanning&&<><ScanLine/><strong>Сканируйте QR-карту клиента</strong><small>Или введите код вручную ниже</small><button className="primary-action" disabled={!branches.length||busy} onClick={()=>void scan()}><Camera/>Сканировать QR</button></>}{scanning&&<button onClick={()=>void stop()}><CameraOff/>Остановить камеру</button>}</div><div className="staff-lookup-divider"><span>или</span></div><form className="staff-code-search" onSubmit={e=>{e.preventDefault();void find(String(new FormData(e.currentTarget).get("code")||""))}}><Keyboard/><label>Код клиента или телефон<input ref={inputRef} name="code" placeholder="482 731 или +7 700…" required/><small>Поиск по имени и номеру телефона тоже поддерживается</small></label><button disabled={busy}>{busy?<LoaderCircle className="spin"/>:"Найти"}</button></form></section>{message&&<div className="staff-empty-error" role="alert"><AlertTriangle/><div><strong>{message}</strong><small>Проверьте данные и попробуйте снова.</small></div><button onClick={()=>setMessage("")}>Повторить</button></div>}<footer className="staff-lookup-footer"><UserRound/><span>После поиска покажем только прогресс, награду и допустимые действия.</span></footer></main></SectionShell>;
+import { useConfirm } from "./use-confirm";
+type Customer = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  phoneMasked?: string;
+  totalPoints: number;
+  totalVisits: number;
+  rewardProgress?: Progress[];
+  rewards?: Reward[];
+};
+type Branch = { id: string; name: string; active: boolean };
+type Progress = {
+  name: string;
+  currentValue: number;
+  targetValue: number;
+  status?: string;
+};
+type Reward = { id: string; name: string; status: string; redeemedAt?: string };
+function lookupId(raw: string) {
+  const value = raw.trim(),
+    m = value.match(/^tappix:customer:[a-z0-9-]+:([0-9a-f-]{36})$/i);
+  return m?.[1] || (/^[0-9a-f-]{36}$/i.test(value) ? value : "");
+}
+export function StaffScanner() {
+  const { ask, dialog } = useConfirm();
+  const [branches, setBranches] = useState<Branch[]>([]),
+    [branchId, setBranchId] = useState(""),
+    [customer, setCustomer] = useState<Customer | null>(null),
+    [progress, setProgress] = useState<Progress | null>(null),
+    [rewards, setRewards] = useState<Reward[]>([]),
+    [message, setMessage] = useState(""),
+    [busy, setBusy] = useState(false),
+    [scanning, setScanning] = useState(false),
+    [success, setSuccess] = useState(""),
+    [operation, setOperation] = useState<"credit" | "debit" | null>(null),
+    [amount, setAmount] = useState(""),
+    [reason, setReason] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null),
+    reader = useRef<{ stop: () => Promise<void>; clear: () => void } | null>(
+      null,
+    );
+  useEffect(() => {
+    api<Branch[]>("/branches")
+      .then((items) => {
+        const active = items.filter((x) => x.active);
+        setBranches(active);
+        setBranchId(active[0]?.id || "");
+      })
+      .catch(() => setMessage("Не удалось загрузить филиалы"));
+    return () => {
+      void reader.current?.stop().catch(() => undefined);
+    };
+  }, []);
+  async function find(raw: string) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const id = lookupId(raw),
+        value = raw.replace(/\s/g, "");
+      const payload = id
+        ? { customerId: id }
+        : /^\d{6}$/.test(value)
+          ? { code: value }
+          : { phone: raw };
+      const found = await api<Customer>("/staff/customers/lookup", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setCustomer(found);
+      setProgress(found.rewardProgress?.[0] || null);
+      setRewards(found.rewards || []);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Клиент не найден");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function stop() {
+    if (reader.current) {
+      await reader.current.stop().catch(() => undefined);
+      reader.current.clear();
+      reader.current = null;
+    }
+    setScanning(false);
+  }
+  async function scan() {
+    try {
+      const { Html5Qrcode } = await import("html5-qrcode");
+      const x = new Html5Qrcode("staff-reader");
+      reader.current = x;
+      setScanning(true);
+      await x.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 230, height: 230 } },
+        (code) => {
+          void stop();
+          void find(code);
+        },
+        () => undefined,
+      );
+    } catch {
+      setScanning(false);
+      setMessage("Нет доступа к камере. Введите код клиента вручную.");
+    }
+  }
+  async function visit() {
+    if (!customer || !branchId) return;
+    setBusy(true);
+    try {
+      const r = await api<{ totalVisits: number; pointsAdded: number }>(
+        "/visits",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            customerId: customer.id,
+            branchId,
+            comment: "Staff Mode",
+          }),
+        },
+      );
+      const nextProgress = progress
+        ? {
+            ...progress,
+            currentValue: Math.min(
+              progress.targetValue,
+              progress.currentValue + 1,
+            ),
+          }
+        : null;
+      setCustomer({
+        ...customer,
+        totalVisits: r.totalVisits,
+        totalPoints: customer.totalPoints + r.pointsAdded,
+      });
+      setProgress(nextProgress);
+      setSuccess(
+        nextProgress && nextProgress.currentValue >= nextProgress.targetValue
+          ? `Награда «${nextProgress.name}» теперь доступна`
+          : `Посещение добавлено · ${r.totalVisits} посещений`,
+      );
+    } catch (e) {
+      setMessage(
+        e instanceof Error ? e.message : "Не удалось выполнить операцию",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function redeem(reward: Reward) {
+    if (!customer || !branchId) return;
+    if (
+      !(await ask({
+        title: "Использовать награду?",
+        description: `Клиент получит «${reward.name}». Операция сохранится в истории.`,
+        confirmLabel: "Использовать",
+      }))
+    )
+      return;
+    setBusy(true);
+    try {
+      await api(`/rewards/${reward.id}/redeem`, {
+        method: "POST",
+        body: JSON.stringify({
+          branchId,
+          reason: "Staff Mode",
+          idempotencyKey: crypto.randomUUID(),
+        }),
+      });
+      setRewards((items) =>
+        items.map((item) =>
+          item.id === reward.id
+            ? {
+                ...item,
+                status: "redeemed",
+                redeemedAt: new Date().toISOString(),
+              }
+            : item,
+        ),
+      );
+      setSuccess(`Награда «${reward.name}» использована`);
+    } catch (e) {
+      setMessage(
+        e instanceof Error ? e.message : "Не удалось использовать награду",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function adjust(e: FormEvent) {
+    e.preventDefault();
+    if (!customer || !operation || !branchId) return;
+    setBusy(true);
+    try {
+      const r = await api<{ balance?: number; approvalRequired?: boolean }>(
+        `/customers/${customer.id}/bonus`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            operation,
+            amount: Number(amount),
+            description: reason,
+            branchId,
+            idempotencyKey: crypto.randomUUID(),
+          }),
+        },
+      );
+      setCustomer({
+        ...customer,
+        totalPoints: r.balance ?? customer.totalPoints,
+      });
+      setSuccess(
+        r.approvalRequired ? "Заявка отправлена владельцу" : "Баланс обновлён",
+      );
+      setOperation(null);
+      setAmount("");
+      setReason("");
+    } catch (e) {
+      setMessage(
+        e instanceof Error ? e.message : "Не удалось выполнить операцию",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  function reset() {
+    setCustomer(null);
+    setProgress(null);
+    setRewards([]);
+    setSuccess("");
+    setMessage("");
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+  if (customer)
+    return (
+      <SectionShell
+        active="/scanner"
+        title="Рабочее место"
+        subtitle="Операция у кассы"
+      >
+        <main className="staff-operational-screen">
+          <header className="staff-service-header">
+            <button onClick={reset}>
+              <RotateCcw />
+              Следующий клиент
+            </button>
+            <span>
+              <small>ОБСЛУЖИВАНИЕ</small>
+              <strong>
+                {branches.find((x) => x.id === branchId)?.name || "Филиал"}
+              </strong>
+            </span>
+          </header>
+          {success && (
+            <div className="staff-success-state" role="status">
+              <CheckCircle2 />
+              <div>
+                <strong>{success}</strong>
+                <small>Операция сохранена в истории</small>
+              </div>
+            </div>
+          )}
+          <section className="staff-customer-state">
+            <header>
+              <span className="staff-customer-avatar">
+                {customer.firstName.slice(0, 1)}
+              </span>
+              <div>
+                <small>КЛИЕНТ</small>
+                <h2>
+                  {customer.firstName} {customer.lastName}
+                </h2>
+                <p>
+                  {customer.phoneMasked || customer.phone || "Код подтверждён"}
+                </p>
+              </div>
+            </header>
+            <div className="staff-loyalty-state">
+              {progress ? (
+                <>
+                  <small>ПРОГРЕСС ДО НАГРАДЫ</small>
+                  <strong>
+                    {progress.currentValue} из {progress.targetValue} посещений
+                  </strong>
+                  <span>
+                    {progress.name} · осталось{" "}
+                    {Math.max(0, progress.targetValue - progress.currentValue)}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <small>БАЛАНС</small>
+                  <strong>{customer.totalPoints} бонусов</strong>
+                  <span>Доступно для операций</span>
+                </>
+              )}
+            </div>
+            <label className="staff-branch-select">
+              Точка
+              <select
+                value={branchId}
+                onChange={(e) => setBranchId(e.target.value)}
+              >
+                {branches.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
+          <section className="staff-actions-primary">
+            <button disabled={busy || !branchId} onClick={() => void visit()}>
+              <CheckCircle2 />
+              <span>
+                <strong>Добавить посещение</strong>
+                <small>Начислить по программе</small>
+              </span>
+            </button>
+            {rewards
+              .filter((x) => x.status === "available")
+              .map((x) => (
+                <button
+                  key={x.id}
+                  disabled={busy}
+                  onClick={() => void redeem(x)}
+                >
+                  <Gift />
+                  <span>
+                    <strong>Использовать награду</strong>
+                    <small>{x.name}</small>
+                  </span>
+                </button>
+              ))}
+          </section>
+          <section className="staff-actions-secondary">
+            <button onClick={() => setOperation("credit")}>
+              <Plus />
+              Начислить бонусы
+            </button>
+            <button onClick={() => setOperation("debit")}>
+              <Minus />
+              Списать бонусы
+            </button>
+          </section>
+          {operation && (
+            <form className="staff-inline-form" onSubmit={adjust}>
+              <header>
+                <strong>
+                  {operation === "credit"
+                    ? "Начислить бонусы"
+                    : "Списать бонусы"}
+                </strong>
+                <button type="button" onClick={() => setOperation(null)}>
+                  Отмена
+                </button>
+              </header>
+              <label>
+                Количество
+                <input
+                  type="number"
+                  min="1"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </label>
+              <label>
+                Причина
+                <input
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  required
+                  minLength={4}
+                />
+              </label>
+              <button className="primary-action" disabled={busy}>
+                Подтвердить
+              </button>
+            </form>
+          )}
+          <p className="staff-safe-note">
+            <ShieldCheck />
+            Операции записываются в историю.
+          </p>
+          {dialog}
+        </main>
+      </SectionShell>
+    );
+  return (
+    <SectionShell
+      active="/scanner"
+      title="Рабочее место сотрудника"
+      subtitle="Найдите клиента и выполните одну операцию"
+    >
+      <main className="staff-lookup-screen">
+        <header className="staff-lookup-header">
+          <div>
+            <small>STAFF MODE</small>
+            <h2>Найти клиента</h2>
+            <p>Сканируйте карту или используйте короткий код.</p>
+          </div>
+          <span>
+            <ShieldCheck />
+            Только операции у кассы
+          </span>
+        </header>
+        <section className="staff-lookup-workspace">
+          <div className="staff-scan-primary">
+            <div id="staff-reader" className={scanning ? "active" : ""} />
+            {!scanning && (
+              <>
+                <ScanLine />
+                <strong>Сканируйте QR-карту клиента</strong>
+                <small>Или введите код вручную ниже</small>
+                <button
+                  className="primary-action"
+                  disabled={!branches.length || busy}
+                  onClick={() => void scan()}
+                >
+                  <Camera />
+                  Сканировать QR
+                </button>
+              </>
+            )}
+            {scanning && (
+              <button onClick={() => void stop()}>
+                <CameraOff />
+                Остановить камеру
+              </button>
+            )}
+          </div>
+          <div className="staff-lookup-divider">
+            <span>или</span>
+          </div>
+          <form
+            className="staff-code-search"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void find(
+                String(new FormData(e.currentTarget).get("code") || ""),
+              );
+            }}
+          >
+            <Keyboard />
+            <label>
+              Код клиента или телефон
+              <input
+                ref={inputRef}
+                name="code"
+                inputMode="tel"
+                placeholder="482 731 или +7 700…"
+                required
+              />
+              <small>Введите 6 цифр с карты или полный номер телефона</small>
+            </label>
+            <button disabled={busy}>
+              {busy ? <LoaderCircle className="spin" /> : "Найти"}
+            </button>
+          </form>
+        </section>
+        {message && (
+          <div className="staff-empty-error" role="alert">
+            <AlertTriangle />
+            <div>
+              <strong>{message}</strong>
+              <small>Проверьте данные и попробуйте снова.</small>
+            </div>
+            <button onClick={() => setMessage("")}>Повторить</button>
+          </div>
+        )}
+        <footer className="staff-lookup-footer">
+          <UserRound />
+          <span>
+            После поиска покажем только прогресс, награду и допустимые действия.
+          </span>
+        </footer>
+      </main>
+    </SectionShell>
+  );
 }

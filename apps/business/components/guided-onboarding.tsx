@@ -2,42 +2,754 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Coffee, Gift, HeartPulse, LoaderCircle, Palette, QrCode, Rocket, Scissors, ShoppingBag, Sparkles, Store, Target, Utensils, Wrench, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Building2,
+  Check,
+  CheckCircle2,
+  Coffee,
+  Gift,
+  HeartPulse,
+  LoaderCircle,
+  Palette,
+  QrCode,
+  Rocket,
+  Scissors,
+  ShoppingBag,
+  Sparkles,
+  Store,
+  Target,
+  Utensils,
+  Wrench,
+  X,
+} from "lucide-react";
 import { api } from "@/lib/api";
+import { CustomerCardPreview } from "./customer-card-preview";
 
-type Industry="coffee"|"salon"|"restaurant"|"autoservice"|"clinic"|"retail";
-type Goal="repeat"|"average"|"database"|"referrals";
-type Branch={id:string;name:string;address:string;active:boolean};
-type Device={id:string;branchId:string;name:string;kind:"nfc"|"qr";active:boolean};
-type Draft={industry:Industry;goal:Goal;template:string;welcomeBonus:number;pointsPerVisit:number;birthdayBonus:number;visitsForReward:number;rewardName:string;primaryColor:string;welcomeTitle:string;welcomeText:string;branchId:string;branchName:string;branchAddress:string;touchpointName:string};
-const templates:Record<Industry,{name:string;description:string;icon:typeof Coffee;values:Partial<Draft>}>= {
- coffee:{name:"Каждый восьмой кофе",description:"Быстрый штамп-механизм для частых визитов",icon:Coffee,values:{welcomeBonus:20,pointsPerVisit:1,birthdayBonus:50,visitsForReward:8,rewardName:"Кофе в подарок"}},
- salon:{name:"Cashback + день рождения",description:"Возврат клиентов и персональный повод",icon:Scissors,values:{welcomeBonus:100,pointsPerVisit:100,birthdayBonus:500,visitsForReward:5,rewardName:"Уход в подарок"}},
- restaurant:{name:"Уровни и средний чек",description:"Награда за регулярность и высокий чек",icon:Utensils,values:{welcomeBonus:200,pointsPerVisit:150,birthdayBonus:700,visitsForReward:6,rewardName:"Десерт от шефа"}},
- autoservice:{name:"Следующее обслуживание",description:"Повторный визит и сервисная забота",icon:Wrench,values:{welcomeBonus:300,pointsPerVisit:300,birthdayBonus:500,visitsForReward:3,rewardName:"Диагностика в подарок"}},
- clinic:{name:"Повторный приём",description:"Мягкое возвращение без агрессивных скидок",icon:HeartPulse,values:{welcomeBonus:100,pointsPerVisit:200,birthdayBonus:300,visitsForReward:4,rewardName:"Консультация специалиста"}},
- retail:{name:"Cashback и VIP",description:"Повторные покупки и рост ценности клиента",icon:ShoppingBag,values:{welcomeBonus:200,pointsPerVisit:100,birthdayBonus:500,visitsForReward:5,rewardName:"VIP-подарок"}},
+type Industry =
+  | "coffee"
+  | "salon"
+  | "restaurant"
+  | "autoservice"
+  | "clinic"
+  | "retail";
+type Goal = "repeat" | "average" | "database" | "referrals";
+type Branch = { id: string; name: string; address: string; active: boolean };
+type Device = {
+  id: string;
+  branchId: string;
+  name: string;
+  kind: "nfc" | "qr";
+  active: boolean;
 };
-const initial:Draft={industry:"coffee",goal:"repeat",template:"Каждый восьмой кофе",welcomeBonus:20,pointsPerVisit:1,birthdayBonus:50,visitsForReward:8,rewardName:"Кофе в подарок",primaryColor:"#6352ee",welcomeTitle:"Добро пожаловать!",welcomeText:"Копите бонусы за каждый визит и получайте подарки.",branchId:"",branchName:"Основной филиал",branchAddress:"",touchpointName:"QR у кассы"};
-const industryLabels:Record<Industry,string>={coffee:"Кофейня",salon:"Салон",restaurant:"Ресторан",autoservice:"Автосервис",clinic:"Клиника",retail:"Retail"};
-const goalLabels:Record<Goal,string>={repeat:"Повторные визиты",average:"Средний чек",database:"Сбор базы",referrals:"Рекомендации"};
+type Draft = {
+  industry: Industry;
+  goal: Goal;
+  template: string;
+  welcomeBonus: number;
+  pointsPerVisit: number;
+  birthdayBonus: number;
+  visitsForReward: number;
+  rewardName: string;
+  primaryColor: string;
+  welcomeTitle: string;
+  welcomeText: string;
+  branchId: string;
+  branchName: string;
+  branchAddress: string;
+  touchpointName: string;
+};
+const templates: Record<
+  Industry,
+  {
+    name: string;
+    description: string;
+    icon: typeof Coffee;
+    values: Partial<Draft>;
+  }
+> = {
+  coffee: {
+    name: "Каждый восьмой кофе",
+    description: "Быстрый штамп-механизм для частых визитов",
+    icon: Coffee,
+    values: {
+      welcomeBonus: 20,
+      pointsPerVisit: 1,
+      birthdayBonus: 50,
+      visitsForReward: 8,
+      rewardName: "Кофе в подарок",
+    },
+  },
+  salon: {
+    name: "Cashback + день рождения",
+    description: "Возврат клиентов и персональный повод",
+    icon: Scissors,
+    values: {
+      welcomeBonus: 100,
+      pointsPerVisit: 100,
+      birthdayBonus: 500,
+      visitsForReward: 5,
+      rewardName: "Уход в подарок",
+    },
+  },
+  restaurant: {
+    name: "Уровни и средний чек",
+    description: "Награда за регулярность и высокий чек",
+    icon: Utensils,
+    values: {
+      welcomeBonus: 200,
+      pointsPerVisit: 150,
+      birthdayBonus: 700,
+      visitsForReward: 6,
+      rewardName: "Десерт от шефа",
+    },
+  },
+  autoservice: {
+    name: "Следующее обслуживание",
+    description: "Повторный визит и сервисная забота",
+    icon: Wrench,
+    values: {
+      welcomeBonus: 300,
+      pointsPerVisit: 300,
+      birthdayBonus: 500,
+      visitsForReward: 3,
+      rewardName: "Диагностика в подарок",
+    },
+  },
+  clinic: {
+    name: "Повторный приём",
+    description: "Мягкое возвращение без агрессивных скидок",
+    icon: HeartPulse,
+    values: {
+      welcomeBonus: 100,
+      pointsPerVisit: 200,
+      birthdayBonus: 300,
+      visitsForReward: 4,
+      rewardName: "Консультация специалиста",
+    },
+  },
+  retail: {
+    name: "Cashback и VIP",
+    description: "Повторные покупки и рост ценности клиента",
+    icon: ShoppingBag,
+    values: {
+      welcomeBonus: 200,
+      pointsPerVisit: 100,
+      birthdayBonus: 500,
+      visitsForReward: 5,
+      rewardName: "VIP-подарок",
+    },
+  },
+};
+const initial: Draft = {
+  industry: "coffee",
+  goal: "repeat",
+  template: "Каждый восьмой кофе",
+  welcomeBonus: 20,
+  pointsPerVisit: 1,
+  birthdayBonus: 50,
+  visitsForReward: 8,
+  rewardName: "Кофе в подарок",
+  primaryColor: "#6352ee",
+  welcomeTitle: "Добро пожаловать!",
+  welcomeText: "Копите бонусы за каждый визит и получайте подарки.",
+  branchId: "",
+  branchName: "Основной филиал",
+  branchAddress: "",
+  touchpointName: "QR у кассы",
+};
+const industryLabels: Record<Industry, string> = {
+  coffee: "Кофейня",
+  salon: "Салон",
+  restaurant: "Ресторан",
+  autoservice: "Автосервис",
+  clinic: "Клиника",
+  retail: "Retail",
+};
+const goalLabels: Record<Goal, string> = {
+  repeat: "Повторные визиты",
+  average: "Средний чек",
+  database: "Сбор базы",
+  referrals: "Рекомендации",
+};
 
-export function GuidedOnboarding(){
- const[step,setStep]=useState(0),[draft,setDraft]=useState<Draft>(initial),[branches,setBranches]=useState<Branch[]>([]),[devices,setDevices]=useState<Device[]>([]),[saving,setSaving]=useState(false),[message,setMessage]=useState("");
- useEffect(()=>{const saved=localStorage.getItem("tappix_guided_launch");if(saved)try{setDraft({...initial,...JSON.parse(saved)})}catch{}Promise.all([api<Branch[]>("/branches"),api<Device[]>("/devices")]).then(([branchItems,deviceItems])=>{const activeBranches=branchItems.filter(item=>item.active);setBranches(activeBranches);setDevices(deviceItems);if(activeBranches[0])setDraft(value=>({...value,branchId:value.branchId||activeBranches[0].id}))}).catch(()=>undefined)},[]);
- useEffect(()=>{localStorage.setItem("tappix_guided_launch",JSON.stringify(draft))},[draft]);
- const stages=["Цель","Механика","Экономика","Бренд","Точка","Запуск"];
- const estimated=useMemo(()=>draft.welcomeBonus*50+draft.pointsPerVisit*300+draft.birthdayBonus*5,[draft]);
- function chooseIndustry(industry:Industry){const value=templates[industry];setDraft(current=>({...current,industry,template:value.name,...value.values}))}
- function next(){setStep(value=>Math.min(stages.length-1,value+1));window.scrollTo({top:0,behavior:"smooth"})}
- function back(){setStep(value=>Math.max(0,value-1))}
- async function launch(){setSaving(true);setMessage("");try{let branchId=draft.branchId;if(!branchId){const branch=await api<{id:string}>("/branches",{method:"POST",body:JSON.stringify({name:draft.branchName,address:draft.branchAddress})});branchId=branch.id;setDraft(value=>({...value,branchId:branch.id}))}await Promise.all([api("/loyalty/rules",{method:"PATCH",body:JSON.stringify({welcomeBonus:draft.welcomeBonus,pointsPerVisit:draft.pointsPerVisit,birthdayBonus:draft.birthdayBonus,visitsForReward:draft.visitsForReward,rewardName:draft.rewardName})}),api("/settings/guest-portal",{method:"PATCH",body:JSON.stringify({primaryColor:draft.primaryColor,welcomeTitle:draft.welcomeTitle,welcomeText:draft.welcomeText,promotionsEnabled:true,referralBonus:100})})]);const existingDevice=devices.some(device=>device.branchId===branchId&&device.kind==="qr"&&device.name.trim().toLocaleLowerCase("ru-RU")===draft.touchpointName.trim().toLocaleLowerCase("ru-RU"));if(!existingDevice)await api("/devices",{method:"POST",body:JSON.stringify({branchId,kind:"qr",name:draft.touchpointName,destination:"join"})});localStorage.removeItem("tappix_guided_launch");setMessage("Программа опубликована и готова принимать клиентов")}catch(error){setMessage(error instanceof Error?error.message:"Не удалось запустить программу")}finally{setSaving(false)}}
- return <main className="guided-launch"><header className="guided-topbar"><Link href="/" aria-label="Закрыть мастер"><X/></Link><div><strong>Tappix</strong><span>Guided launch</span></div><small>Шаг {step+1} из {stages.length}</small></header><div className="guided-progress"><i style={{width:`${(step+1)/stages.length*100}%`}}/></div><div className="guided-shell"><aside><small>ЗАПУСК ПРОГРАММЫ</small><ol>{stages.map((label,index)=><li className={index===step?"current":index<step?"done":""} key={label}><span>{index<step?<Check/>:index+1}</span>{label}</li>)}</ol><div><Sparkles/><p>Прогресс сохраняется автоматически. Можно вернуться позже.</p></div></aside><section className="guided-content">{message?<div className="guided-success"><span><CheckCircle2/></span><small>ПРОГРАММА ОПУБЛИКОВАНА</small><h1>Всё готово</h1><p>{message}</p><div><Link href="/devices"><QrCode/>Открыть QR-код</Link><Link href="/">Перейти в обзор<ArrowRight/></Link></div></div>:<>
- {step===0&&<div className="guided-step"><small>ШАГ 1</small><h1>Какой у вас бизнес?</h1><p>Выберем механику и настройки, которые подходят вашему циклу покупок.</p><div className="industry-grid">{Object.entries(templates).map(([key,value])=>{const Icon=value.icon;return <button className={draft.industry===key?"selected":""} onClick={()=>chooseIndustry(key as Industry)} key={key}><Icon/><strong>{value.name.split(" ")[0]}</strong><small>{industryLabels[key as Industry]}</small><Check/></button>})}</div><h2>Главная цель</h2><div className="goal-grid">{([['repeat','Повторные визиты','Вернуть клиента быстрее'],['average','Средний чек','Стимулировать большую покупку'],['database','Сбор базы','Получить больше контактов'],['referrals','Рекомендации','Запустить сарафанное радио']] as [Goal,string,string][]).map(([key,title,text])=><button className={draft.goal===key?"selected":""} onClick={()=>setDraft({...draft,goal:key})} key={key}><Target/><span><strong>{title}</strong><small>{text}</small></span></button>)}</div></div>}
- {step===1&&<div className="guided-step"><small>ШАГ 2</small><h1>Рекомендуем эту механику</h1><p>Она уже настроена под вашу отрасль. Все параметры можно изменить дальше.</p><article className="template-choice"><span>{(()=>{const Icon=templates[draft.industry].icon;return <Icon/>})()}</span><div><small>РЕКОМЕНДОВАНО</small><h2>{templates[draft.industry].name}</h2><p>{templates[draft.industry].description}</p></div><CheckCircle2/></article><div className="template-flow"><article><strong>1</strong><span><b>Клиент регистрируется</b><small>Получает +{draft.welcomeBonus} бонусов</small></span></article><ArrowRight/><article><strong>2</strong><span><b>Возвращается</b><small>Получает +{draft.pointsPerVisit} за визит</small></span></article><ArrowRight/><article><strong>3</strong><span><b>Получает награду</b><small>{draft.rewardName}</small></span></article></div></div>}
- {step===2&&<div className="guided-step"><small>ШАГ 3</small><h1>Настройте экономику</h1><p>Показываем приблизительную нагрузку до запуска программы.</p><div className="economy-layout"><div className="economy-form"><label>Приветственный бонус<input type="number" min="0" value={draft.welcomeBonus} onChange={e=>setDraft({...draft,welcomeBonus:Number(e.target.value)})}/></label><label>Бонус за посещение<input type="number" min="0" value={draft.pointsPerVisit} onChange={e=>setDraft({...draft,pointsPerVisit:Number(e.target.value)})}/></label><label>Бонус на день рождения<input type="number" min="0" value={draft.birthdayBonus} onChange={e=>setDraft({...draft,birthdayBonus:Number(e.target.value)})}/></label><label>Визитов до награды<input type="number" min="1" value={draft.visitsForReward} onChange={e=>setDraft({...draft,visitsForReward:Number(e.target.value)})}/></label><label className="wide">Название награды<input value={draft.rewardName} onChange={e=>setDraft({...draft,rewardName:e.target.value})}/></label></div><aside><Gift/><small>ПРОГНОЗ НА МЕСЯЦ</small><strong>≈ {estimated.toLocaleString("ru-RU")} бонусов</strong><p>При 50 регистрациях, 300 визитах и 5 днях рождения.</p><span>Это прогноз, а не списание денег.</span></aside></div></div>}
- {step===3&&<div className="guided-step"><small>ШАГ 4</small><h1>Сделайте карту своей</h1><p>Клиент увидит этот экран сразу после NFC-касания или QR.</p><div className="brand-layout"><div><label>Основной цвет<input type="color" value={draft.primaryColor} onChange={e=>setDraft({...draft,primaryColor:e.target.value})}/></label><label>Приветствие<input value={draft.welcomeTitle} onChange={e=>setDraft({...draft,welcomeTitle:e.target.value})}/></label><label>Короткое описание<textarea rows={4} value={draft.welcomeText} onChange={e=>setDraft({...draft,welcomeText:e.target.value})}/></label></div><article style={{"--preview-color":draft.primaryColor} as React.CSSProperties}><Palette/><small>БОНУСНАЯ КАРТА</small><h2>{draft.welcomeTitle}</h2><p>{draft.welcomeText}</p><span><Gift/>+{draft.welcomeBonus} за регистрацию</span></article></div></div>}
- {step===4&&<div className="guided-step"><small>ШАГ 5</small><h1>Где клиенты будут подключаться?</h1><p>Создадим филиал и готовую QR-точку регистрации.</p>{branches.length>0&&<label className="guided-select">Существующий филиал<select value={draft.branchId} onChange={e=>setDraft({...draft,branchId:e.target.value})}><option value="">Создать новый</option>{branches.map(branch=><option key={branch.id} value={branch.id}>{branch.name} · {branch.address}</option>)}</select></label>}{!draft.branchId&&<div className="branch-fields"><label>Название филиала<input value={draft.branchName} onChange={e=>setDraft({...draft,branchName:e.target.value})}/></label><label>Адрес<input value={draft.branchAddress} onChange={e=>setDraft({...draft,branchAddress:e.target.value})} placeholder="Город, улица, дом"/></label></div>}<label className="guided-select">Название QR-точки<input value={draft.touchpointName} onChange={e=>setDraft({...draft,touchpointName:e.target.value})}/><small>Например: стойка, касса или столик.</small></label><div className="touchpoint-preview"><QrCode/><div><strong>{draft.touchpointName}</strong><small>Регистрация клиента → цифровая карта</small></div><b>Будет создана</b></div></div>}
- {step===5&&<div className="guided-step"><small>ФИНАЛ</small><h1>Проверьте перед запуском</h1><p>Tappix применит настройки и создаст QR-точку одним действием.</p><div className="launch-summary"><article><Store/><span><small>Отрасль и цель</small><strong>{industryLabels[draft.industry]} · {goalLabels[draft.goal]}</strong></span></article><article><Gift/><span><small>Механика</small><strong>{draft.template}</strong></span></article><article><Palette/><span><small>Брендинг</small><strong>{draft.welcomeTitle}</strong></span></article><article><Building2/><span><small>Точка запуска</small><strong>{branches.find(x=>x.id===draft.branchId)?.name||draft.branchName} · {draft.touchpointName}</strong></span></article></div><div className="launch-note"><Rocket/><div><strong>После запуска</strong><p>Откройте QR-код на телефоне, выполните тестовую регистрацию и затем разместите его у кассы.</p></div></div></div>}
- <footer className="guided-actions"><button onClick={back} disabled={step===0||saving}><ArrowLeft/>Назад</button>{step<stages.length-1?<button className="primary" onClick={next}>Продолжить<ArrowRight/></button>:<button className="primary launch" disabled={saving||(!draft.branchId&&(!draft.branchName||!draft.branchAddress))} onClick={()=>void launch()}>{saving?<LoaderCircle className="spin"/>:<Rocket/>}{saving?"Запускаем…":"Опубликовать программу"}</button>}</footer></>}</section></div></main>
+export function GuidedOnboarding() {
+  const [step, setStep] = useState(0),
+    [draft, setDraft] = useState<Draft>(initial),
+    [branches, setBranches] = useState<Branch[]>([]),
+    [devices, setDevices] = useState<Device[]>([]),
+    [saving, setSaving] = useState(false),
+    [message, setMessage] = useState("");
+  useEffect(() => {
+    const saved = localStorage.getItem("tappix_guided_launch");
+    if (saved)
+      try {
+        setDraft({ ...initial, ...JSON.parse(saved) });
+      } catch {}
+    Promise.all([api<Branch[]>("/branches"), api<Device[]>("/devices")])
+      .then(([branchItems, deviceItems]) => {
+        const activeBranches = branchItems.filter((item) => item.active);
+        setBranches(activeBranches);
+        setDevices(deviceItems);
+        if (activeBranches[0])
+          setDraft((value) => ({
+            ...value,
+            branchId: value.branchId || activeBranches[0].id,
+          }));
+      })
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("tappix_guided_launch", JSON.stringify(draft));
+  }, [draft]);
+  const stages = ["Бизнес", "Программа", "Награда", "Preview", "Филиал", "Запуск"];
+  const estimated = useMemo(
+    () =>
+      draft.welcomeBonus * 50 +
+      draft.pointsPerVisit * 300 +
+      draft.birthdayBonus * 5,
+    [draft],
+  );
+  function chooseIndustry(industry: Industry) {
+    const value = templates[industry];
+    setDraft((current) => ({
+      ...current,
+      industry,
+      template: value.name,
+      ...value.values,
+    }));
+  }
+  function next() {
+    setStep((value) => Math.min(stages.length - 1, value + 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function back() {
+    setStep((value) => Math.max(0, value - 1));
+  }
+  async function launch() {
+    setSaving(true);
+    setMessage("");
+    try {
+      let branchId = draft.branchId;
+      if (!branchId) {
+        const branch = await api<{ id: string }>("/branches", {
+          method: "POST",
+          body: JSON.stringify({
+            name: draft.branchName,
+            address: draft.branchAddress,
+          }),
+        });
+        branchId = branch.id;
+        setDraft((value) => ({ ...value, branchId: branch.id }));
+      }
+      await Promise.all([
+        api("/loyalty/rules", {
+          method: "PATCH",
+          body: JSON.stringify({
+            welcomeBonus: draft.welcomeBonus,
+            pointsPerVisit: draft.pointsPerVisit,
+            birthdayBonus: draft.birthdayBonus,
+            visitsForReward: draft.visitsForReward,
+            rewardName: draft.rewardName,
+          }),
+        }),
+        api("/settings/guest-portal", {
+          method: "PATCH",
+          body: JSON.stringify({
+            primaryColor: draft.primaryColor,
+            welcomeTitle: draft.welcomeTitle,
+            welcomeText: draft.welcomeText,
+            promotionsEnabled: true,
+            referralBonus: 100,
+          }),
+        }),
+      ]);
+      const existingDevice = devices.some(
+        (device) =>
+          device.branchId === branchId &&
+          device.kind === "qr" &&
+          device.name.trim().toLocaleLowerCase("ru-RU") ===
+            draft.touchpointName.trim().toLocaleLowerCase("ru-RU"),
+      );
+      if (!existingDevice)
+        await api("/devices", {
+          method: "POST",
+          body: JSON.stringify({
+            branchId,
+            kind: "qr",
+            name: draft.touchpointName,
+            destination: "join",
+          }),
+        });
+      localStorage.removeItem("tappix_guided_launch");
+      setMessage("Программа опубликована и готова принимать клиентов");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Не удалось запустить программу",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <main className="guided-launch">
+      <header className="guided-topbar">
+        <Link href="/" aria-label="Закрыть мастер">
+          <X />
+        </Link>
+        <div>
+          <strong>Tappix</strong>
+          <span>Guided launch</span>
+        </div>
+        <small>
+          Шаг {step + 1} из {stages.length}
+        </small>
+      </header>
+      <div className="guided-progress">
+        <i style={{ width: `${((step + 1) / stages.length) * 100}%` }} />
+      </div>
+      <div className="guided-shell">
+        <aside>
+          <small>ЗАПУСК ПРОГРАММЫ</small>
+          <ol>
+            {stages.map((label, index) => (
+              <li
+                className={
+                  index === step ? "current" : index < step ? "done" : ""
+                }
+                key={label}
+              >
+                <span>{index < step ? <Check /> : index + 1}</span>
+                {label}
+              </li>
+            ))}
+          </ol>
+          <div>
+            <Sparkles />
+            <p>Прогресс сохраняется автоматически. Можно вернуться позже.</p>
+          </div>
+        </aside>
+        <section className="guided-content">
+          {message ? (
+            <div className="guided-success">
+              <span>
+                <CheckCircle2 />
+              </span>
+              <small>ПРОГРАММА ОПУБЛИКОВАНА</small>
+              <h1>Всё готово</h1>
+              <p>{message}</p>
+              <div>
+                <Link href="/devices">
+                  <QrCode />
+                  Открыть QR-код
+                </Link>
+                <Link href="/">
+                  Перейти в обзор
+                  <ArrowRight />
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <>
+              {step === 0 && (
+                <div className="guided-step">
+                  <small>ШАГ 1</small>
+                  <h1>Какой у вас бизнес?</h1>
+                  <p>
+                    Выберем механику и настройки, которые подходят вашему циклу
+                    покупок.
+                  </p>
+                  <div className="industry-grid">
+                    {Object.entries(templates).map(([key, value]) => {
+                      const Icon = value.icon;
+                      return (
+                        <button
+                          className={draft.industry === key ? "selected" : ""}
+                          onClick={() => chooseIndustry(key as Industry)}
+                          key={key}
+                        >
+                          <Icon />
+                          <strong>{value.name.split(" ")[0]}</strong>
+                          <small>{industryLabels[key as Industry]}</small>
+                          <Check />
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <h2>Главная цель</h2>
+                  <div className="goal-grid">
+                    {(
+                      [
+                        [
+                          "repeat",
+                          "Повторные визиты",
+                          "Вернуть клиента быстрее",
+                        ],
+                        [
+                          "average",
+                          "Средний чек",
+                          "Стимулировать большую покупку",
+                        ],
+                        ["database", "Сбор базы", "Получить больше контактов"],
+                        [
+                          "referrals",
+                          "Рекомендации",
+                          "Запустить сарафанное радио",
+                        ],
+                      ] as [Goal, string, string][]
+                    ).map(([key, title, text]) => (
+                      <button
+                        className={draft.goal === key ? "selected" : ""}
+                        onClick={() => setDraft({ ...draft, goal: key })}
+                        key={key}
+                      >
+                        <Target />
+                        <span>
+                          <strong>{title}</strong>
+                          <small>{text}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {step === 1 && (
+                <div className="guided-step">
+                  <small>ШАГ 2</small>
+                  <h1>Рекомендуем эту механику</h1>
+                  <p>
+                    Она уже настроена под вашу отрасль. Все параметры можно
+                    изменить дальше.
+                  </p>
+                  <article className="template-choice">
+                    <span>
+                      {(() => {
+                        const Icon = templates[draft.industry].icon;
+                        return <Icon />;
+                      })()}
+                    </span>
+                    <div>
+                      <small>РЕКОМЕНДОВАНО</small>
+                      <h2>{templates[draft.industry].name}</h2>
+                      <p>{templates[draft.industry].description}</p>
+                    </div>
+                    <CheckCircle2 />
+                  </article>
+                  <div className="template-flow">
+                    <article>
+                      <strong>1</strong>
+                      <span>
+                        <b>Клиент регистрируется</b>
+                        <small>Получает +{draft.welcomeBonus} бонусов</small>
+                      </span>
+                    </article>
+                    <ArrowRight />
+                    <article>
+                      <strong>2</strong>
+                      <span>
+                        <b>Возвращается</b>
+                        <small>Получает +{draft.pointsPerVisit} за визит</small>
+                      </span>
+                    </article>
+                    <ArrowRight />
+                    <article>
+                      <strong>3</strong>
+                      <span>
+                        <b>Получает награду</b>
+                        <small>{draft.rewardName}</small>
+                      </span>
+                    </article>
+                  </div>
+                </div>
+              )}
+              {step === 2 && (
+                <div className="guided-step">
+                  <small>ШАГ 3</small>
+                  <h1>Настройте экономику</h1>
+                  <p>
+                    Показываем приблизительную нагрузку до запуска программы.
+                  </p>
+                  <div className="economy-layout">
+                    <div className="economy-form">
+                      <label>
+                        Приветственный бонус
+                        <input
+                          type="number"
+                          min="0"
+                          value={draft.welcomeBonus}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              welcomeBonus: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Бонус за посещение
+                        <input
+                          type="number"
+                          min="0"
+                          value={draft.pointsPerVisit}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              pointsPerVisit: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Бонус на день рождения
+                        <input
+                          type="number"
+                          min="0"
+                          value={draft.birthdayBonus}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              birthdayBonus: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Визитов до награды
+                        <input
+                          type="number"
+                          min="1"
+                          value={draft.visitsForReward}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              visitsForReward: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="wide">
+                        Название награды
+                        <input
+                          value={draft.rewardName}
+                          onChange={(e) =>
+                            setDraft({ ...draft, rewardName: e.target.value })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <aside>
+                      <Gift />
+                      <small>ПРОГНОЗ НА МЕСЯЦ</small>
+                      <strong>
+                        ≈ {estimated.toLocaleString("ru-RU")} бонусов
+                      </strong>
+                      <p>При 50 регистрациях, 300 визитах и 5 днях рождения.</p>
+                      <span>Это прогноз, а не списание денег.</span>
+                    </aside>
+                  </div>
+                </div>
+              )}
+              {step === 3 && (
+                <div className="guided-step">
+                  <small>ШАГ 4</small>
+                  <h1>Сделайте карту своей</h1>
+                  <p>
+                    Клиент увидит этот экран сразу после NFC-касания или QR.
+                  </p>
+                  <div className="brand-layout">
+                    <div>
+                      <label>
+                        Основной цвет
+                        <input
+                          type="color"
+                          value={draft.primaryColor}
+                          onChange={(e) =>
+                            setDraft({ ...draft, primaryColor: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Приветствие
+                        <input
+                          value={draft.welcomeTitle}
+                          onChange={(e) =>
+                            setDraft({ ...draft, welcomeTitle: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Короткое описание
+                        <textarea
+                          rows={4}
+                          value={draft.welcomeText}
+                          onChange={(e) =>
+                            setDraft({ ...draft, welcomeText: e.target.value })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <CustomerCardPreview color={draft.primaryColor} progress={Math.max(0,draft.visitsForReward-1)} target={draft.visitsForReward} reward={draft.rewardName}/>
+                  </div>
+                </div>
+              )}
+              {step === 4 && (
+                <div className="guided-step">
+                  <small>ШАГ 5</small>
+                  <h1>Где клиенты будут подключаться?</h1>
+                  <p>Создадим филиал и готовую QR-точку регистрации.</p>
+                  {branches.length > 0 && (
+                    <label className="guided-select">
+                      Существующий филиал
+                      <select
+                        value={draft.branchId}
+                        onChange={(e) =>
+                          setDraft({ ...draft, branchId: e.target.value })
+                        }
+                      >
+                        <option value="">Создать новый</option>
+                        {branches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {branch.name} · {branch.address}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {!draft.branchId && (
+                    <div className="branch-fields">
+                      <label>
+                        Название филиала
+                        <input
+                          value={draft.branchName}
+                          onChange={(e) =>
+                            setDraft({ ...draft, branchName: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Адрес
+                        <input
+                          value={draft.branchAddress}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              branchAddress: e.target.value,
+                            })
+                          }
+                          placeholder="Город, улица, дом"
+                        />
+                      </label>
+                    </div>
+                  )}
+                  <label className="guided-select">
+                    Название QR-точки
+                    <input
+                      value={draft.touchpointName}
+                      onChange={(e) =>
+                        setDraft({ ...draft, touchpointName: e.target.value })
+                      }
+                    />
+                    <small>Например: стойка, касса или столик.</small>
+                  </label>
+                  <div className="touchpoint-preview">
+                    <QrCode />
+                    <div>
+                      <strong>{draft.touchpointName}</strong>
+                      <small>Регистрация клиента → цифровая карта</small>
+                    </div>
+                    <b>Будет создана</b>
+                  </div>
+                </div>
+              )}
+              {step === 5 && (
+                <div className="guided-step">
+                  <small>ФИНАЛ</small>
+                  <h1>Проверьте перед запуском</h1>
+                  <p>
+                    Tappix применит настройки и создаст QR-точку одним
+                    действием.
+                  </p>
+                  <div className="launch-summary">
+                    <article>
+                      <Store />
+                      <span>
+                        <small>Отрасль и цель</small>
+                        <strong>
+                          {industryLabels[draft.industry]} ·{" "}
+                          {goalLabels[draft.goal]}
+                        </strong>
+                      </span>
+                    </article>
+                    <article>
+                      <Gift />
+                      <span>
+                        <small>Механика</small>
+                        <strong>{draft.template}</strong>
+                      </span>
+                    </article>
+                    <article>
+                      <Palette />
+                      <span>
+                        <small>Брендинг</small>
+                        <strong>{draft.welcomeTitle}</strong>
+                      </span>
+                    </article>
+                    <article>
+                      <Building2 />
+                      <span>
+                        <small>Точка запуска</small>
+                        <strong>
+                          {branches.find((x) => x.id === draft.branchId)
+                            ?.name || draft.branchName}{" "}
+                          · {draft.touchpointName}
+                        </strong>
+                      </span>
+                    </article>
+                  </div>
+                  <div className="launch-note">
+                    <Rocket />
+                    <div>
+                      <strong>После запуска</strong>
+                      <p>
+                        Откройте QR-код на телефоне, выполните тестовую
+                        регистрацию и затем разместите его у кассы.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <footer className="guided-actions">
+                <button onClick={back} disabled={step === 0 || saving}>
+                  <ArrowLeft />
+                  Назад
+                </button>
+                {step < stages.length - 1 ? (
+                  <button className="primary" onClick={next}>
+                    Продолжить
+                    <ArrowRight />
+                  </button>
+                ) : (
+                  <button
+                    className="primary launch"
+                    disabled={
+                      saving ||
+                      (!draft.branchId &&
+                        (!draft.branchName || !draft.branchAddress))
+                    }
+                    onClick={() => void launch()}
+                  >
+                    {saving ? <LoaderCircle className="spin" /> : <Rocket />}
+                    {saving ? "Запускаем…" : "Опубликовать программу"}
+                  </button>
+                )}
+              </footer>
+            </>
+          )}
+        </section>
+      </div>
+    </main>
+  );
 }

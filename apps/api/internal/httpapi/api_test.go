@@ -72,6 +72,20 @@ func TestNormalizedOutcomeDays(t *testing.T) {
 	}
 }
 
+func TestStaffLookupIdentifiers(t *testing.T) {
+	if !sixDigitCustomerCode.MatchString("004271") || sixDigitCustomerCode.MatchString("4271") {
+		t.Fatal("customer code validation does not preserve the six-digit contract")
+	}
+	if !customerUUID.MatchString("e5b59ca2-4bb2-4f87-8b72-08da1d45ac10") {
+		t.Fatal("valid customer UUID was rejected")
+	}
+	for _, invalid := range []string{"", "customer-1", "00000000-0000-0000-0000-000000000000", "e5b59ca2-4bb2-zzzz-8b72-08da1d45ac10"} {
+		if customerUUID.MatchString(invalid) {
+			t.Fatalf("invalid customer UUID %q was accepted", invalid)
+		}
+	}
+}
+
 func TestIntegrationSecretEncryption(t *testing.T) {
 	key := integrationEncryptionKey("unit-test")
 	ciphertext, err := encryptIntegrationSecret(key, []byte("webhook-secret"))

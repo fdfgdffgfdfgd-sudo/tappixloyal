@@ -14,6 +14,9 @@ export type Customer = {
   createdAt: string;
   favoriteBranch?: string;
   lastBranch?: string;
+  lastVisit?: string;
+  segment?: "new" | "active" | "loyal" | "at_risk" | "inactive";
+  status?: "active" | "inactive";
 };
 export type Branch = {
   id: string;
