@@ -4,6 +4,7 @@ import { Check, ChevronRight, Copy, Gift, History, Home, LockKeyhole, LogOut, Me
 import { QRCodeSVG } from "qrcode.react";
 import { csrfHeaders } from "@/lib/csrf";
 import { useDialogFocusTrap } from "./use-dialog-focus-trap";
+import { ConsumerWalletHome } from "./consumer-wallet-home";
 import { API_URL as base } from "@/lib/api";
 type Profile={id:string;firstName:string;lastName:string;phone:string;points:number;visits:number;level:string;company:string;companySlug:string;logoUrl:string;portal:{primaryColor?:string;secondaryColor?:string;themeMode?:string;loyaltyMode?:string;stampsTarget?:number;stampReward?:string;discountStart?:number;discountStep?:number;discountMax?:number;visitsPerStep?:number;referralBonus?:number}};
 type Entry={operation:string;amount:number;balanceAfter:number;description:string;createdAt:string};
@@ -29,6 +30,7 @@ export function PremiumGuestWallet(){
  if(initializing)return <main className="wallet-loading" aria-busy="true" aria-label="Загрузка карты"><div/><span/><span/></main>;
  if(!authenticated||!profile||!wallet)return <GuestLogin mode={mode} setMode={setMode} identity={identity} message={message} devCode={devCode} requestOtp={requestOtp} verify={verify} pinLogin={pinLogin}/>;
  const primary=profile.portal.primaryColor||"#6352ee",mechanic=wallet.loyalty.mode,stampTarget=wallet.loyalty.target,stamps=wallet.loyalty.progress,remaining=wallet.loyalty.remaining,reward=wallet.loyalty.rewardTitle,discount=wallet.loyalty.discountPercent||0,discountMax=wallet.loyalty.target;
+ if (authenticated && profile && wallet) return <ConsumerWalletHome profile={profile} wallet={wallet} rewards={rewards} history={history} qrOpen={cashierOpen} setQrOpen={setCashierOpen} tab={tab} setTab={setTab} signOut={signOut} />;
  return <main className="customer-app wallet-redesign-v11" style={{"--customer-brand":primary} as React.CSSProperties}><section className="wallet-focus-line"><span>Ваша карта</span><small>{profile.company}</small></section>
   <header className="customer-header"><div className="customer-brand"><span className="customer-logo">{profile.logoUrl?<img src={profile.logoUrl} alt=""/>:profile.company.slice(0,1)}</span><span className="customer-brand-copy"><strong>{profile.company}</strong><small>Ваша карта клиента</small></span></div><button aria-label="Дополнительные действия" aria-expanded={menuOpen} onClick={()=>setMenuOpen(!menuOpen)}><MoreHorizontal/></button>{menuOpen&&<div className="customer-menu"><button onClick={()=>navigator.share?.({title:`Карта ${profile.company}`,url:location.href})}><Share2/>Поделиться картой</button><button onClick={signOut}><LogOut/>Выйти</button></div>}</header>
   <div className="customer-screen">
