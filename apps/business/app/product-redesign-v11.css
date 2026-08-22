@@ -1,15 +1,4 @@
 /* Product redesign foundation: one quiet visual language across owner, staff and wallet. */
-:root {
-  --t11-blue: var(--accent);
-  --t11-blue-hover: var(--accent-hover);
-  --t11-bg: var(--app-bg);
-  --t11-surface: var(--surface);
-  --t11-text: var(--text);
-  --t11-muted: var(--text-muted);
-  --t11-line: var(--border);
-  --t11-radius: var(--radius);
-  --t11-shadow: var(--shadow-sm);
-}
 body {
   background: var(--t11-bg);
   color: var(--t11-text);

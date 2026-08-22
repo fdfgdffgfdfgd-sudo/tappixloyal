@@ -80,6 +80,24 @@
   --brand-strong: var(--accent-hover);
   --brand-wash: var(--accent-soft);
   --success-wash: var(--success-soft);
+  --tappix-surface: #fff;
+  --tappix-canvas: #f5f5f7;
+  --tappix-ink: #1d1d1f;
+  --tappix-muted: #6e6e73;
+  --tappix-border: #e5e5ea;
+  --tappix-radius: var(--radius);
+  --tappix-shadow: 0 8px 28px rgba(0, 0, 0, .05);
+
+  /* product-redesign-v11.css */
+  --t11-blue: var(--accent);
+  --t11-blue-hover: var(--accent-hover);
+  --t11-bg: var(--app-bg);
+  --t11-surface: var(--surface);
+  --t11-text: var(--text);
+  --t11-muted: var(--text-muted);
+  --t11-line: var(--border);
+  --t11-radius: var(--radius);
+  --t11-shadow: var(--shadow-sm);
 
   /* app-shell-v4.css */
   --app-surface: var(--surface);
