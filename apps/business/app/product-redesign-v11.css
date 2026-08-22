@@ -200,4 +200,5 @@ body {
 /* WCAG AA semantic states. */
 .loyalty-state-pill{color:#855500}
 .owner-status.active{color:var(--success)}
+.launch-board-steps a.done{color:var(--success)}
 .consumer-cashier-mode>.consumer-copy-code{position:static;display:flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 16px;border:1px solid #e5e5ea;border-radius:11px;color:var(--consumer-brand);font-weight:800}.consumer-copy-code svg{width:17px}
