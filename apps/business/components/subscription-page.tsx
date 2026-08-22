@@ -53,7 +53,10 @@ export function SubscriptionPage() {
             <p>Текущий тариф</p>
             <h2>{value.plan}</h2>
             <strong>
-              {(value.billingPeriod==="yearly"&&currentPlan?currentPlan.annualPrice:value.amount).toLocaleString("ru-RU")} {value.currency} / {value.billingPeriod==="yearly"?"год":"месяц"}
+              {(currentPlan
+                ? value.billingPeriod === "yearly" ? currentPlan.annualPrice : currentPlan.monthlyPrice
+                : value.amount
+              ).toLocaleString("ru-RU")} {value.currency} / {value.billingPeriod==="yearly"?"год":"месяц"}
             </strong>
             <div className="subscription-meta">
               <span>

@@ -78,30 +78,30 @@ export function AnalyticsPage() {
   return (
     <SectionShell
       active="/analytics"
-      title="Аналитика"
-      subtitle="Рост клиентов, посещения и начисления"
+      title="Пульс бизнеса"
+      subtitle="Простые ответы о клиентах, возврате и выручке"
       className="analytics-page-v11"
     >
       <Notice text={msg} />
       <header className="analytics-workspace-header">
         <div className="analytics-workspace-heading">
-          <small>ЦЕНТР РЕШЕНИЙ</small>
-          <h2>Что происходит с клиентами?</h2>
-          <p>Сначала выберите период и филиал, затем откройте один главный вывод.</p>
+          <small>СВОДКА ДЛЯ ВЛАДЕЛЬЦА</small>
+          <h2>Как идут дела?</h2>
+          <p>Собрали главное на одном экране: кто вернулся, что сработало и что сделать дальше.</p>
         </div>
         <Link className="analytics-primary-link" href="/customers">
-          Открыть список клиентов <ArrowRight/>
+          Посмотреть клиентов <ArrowRight/>
         </Link>
       </header>
       <section className="analytics-reading-guide">
         <span className="guide-index">01</span>
-        <div><strong>Сначала смотрим возврат</strong><p>Повторный визит важнее общего числа регистраций: он показывает, что программа приносит пользу.</p></div>
+        <div><strong>Возврат — главный показатель</strong><p>Показывает, сколько гостей пришли снова после первого визита.</p></div>
         <span className="guide-index">02</span>
-        <div><strong>Затем выбираем действие</strong><p>Фильтр филиала и периода меняет все данные ниже, чтобы решение было конкретным.</p></div>
+        <div><strong>Рекомендация — готовое действие</strong><p>Мы не просто показываем цифры, а подсказываем следующий шаг.</p></div>
       </section>
       <section className={`analytics-plan analytics-plan-${tier}`}><div><span>{tier==="pro"?<Crown/>:tier==="growth"?<TrendingUp/>:<BarChart3/>}</span><div><small>АНАЛИТИКА {tierName.toLocaleUpperCase("ru-RU")}</small><h2>{tier==="pro"?"Финансовый центр сети":tier==="growth"?"Центр удержания клиентов":"Пульс программы лояльности"}</h2><p>{tier==="pro"?"Выручка, LTV, повторные покупки и обязательства по бонусам.":tier==="growth"?"Сегменты, риск ухода и конкретные аудитории для возврата.":"Только главные показатели без сложных отчётов."}</p></div></div><Link href="/subscription">{tier==="pro"?"Ваш максимальный тариф":"Сравнить тарифы"}</Link></section>
       <div className="toolbar">
-        <span>Данные в реальном времени</span>
+        <span>Показывать данные за</span>
         <select aria-label="Период аналитики" value={period} onChange={(e) => setPeriod(e.target.value)}>
           <option value="week">7 дней</option>
           <option value="month">30 дней</option>
@@ -111,9 +111,9 @@ export function AnalyticsPage() {
       </div>
       {data && (
         <>
-          {outcomes&&<section className="business-outcomes"><header><div><small>РЕЗУЛЬТАТ ПРОГРАММЫ</small><h2>Что лояльность дала бизнесу?</h2><p>Только подтверждённые события за {outcomes.days} дней. Выручка без контрольной группы называется атрибутированной.</p></div><TrendingUp/></header><div>
+          {outcomes&&<section className="business-outcomes"><header><div><small>ГЛАВНОЕ ЗА {outcomes.days} ДНЕЙ</small><h2>Результат программы</h2><p>Только реальные визиты, сообщения, рекомендации и использованные награды.</p></div><TrendingUp/></header><div>
             <article><span><Repeat2/></span><div><small>Возвращаются ли клиенты?</small><strong>{outcomes.retention.returnedCustomers} клиентов вернулись</strong><p>{outcomes.retention.repeatVisits} повторных посещений за период</p><OutcomeDelta current={outcomes.retention.returnedCustomers} previous={outcomes.previous.returnedCustomers}/></div></article>
-            <article><span><Send/></span><div><small>Что дали автоматизации?</small><strong>{outcomes.automations.returnedCustomers} клиентов вернулись</strong><p>{outcomes.automations.attributedRevenue>0?`${money(outcomes.automations.attributedRevenue)} атрибутированной выручки`:`${outcomes.automations.reachedCustomers} клиентов получили сообщение`}</p><OutcomeDelta current={outcomes.automations.returnedCustomers} previous={outcomes.previous.automationReturned}/></div></article>
+            <article><span><Send/></span><div><small>После ваших сообщений</small><strong>{outcomes.automations.returnedCustomers} клиентов вернулись</strong><p>{outcomes.automations.attributedRevenue>0?`${money(outcomes.automations.attributedRevenue)} выручки после сообщений`:`${outcomes.automations.reachedCustomers} клиентов получили сообщение`}</p><OutcomeDelta current={outcomes.automations.returnedCustomers} previous={outcomes.previous.automationReturned}/></div></article>
             <article><span><Users/></span><div><small>Работают ли рекомендации?</small><strong>{outcomes.referrals.newCustomers} новых клиентов</strong><p>{outcomes.referrals.repeatCustomers} уже совершили повторную покупку</p><OutcomeDelta current={outcomes.referrals.newCustomers} previous={outcomes.previous.referralCustomers}/></div></article>
             <article><span><Gift/></span><div><small>Какая награда работает лучше?</small><strong>{outcomes.rewards.bestName||"Пока недостаточно данных"}</strong><p>{outcomes.rewards.redemptions?`${outcomes.rewards.redemptions} использований`:`Появится после первого погашения`}</p><OutcomeDelta current={outcomes.rewards.redemptions} previous={outcomes.previous.rewardRedemptions}/></div></article>
           </div>{outcomes.branches.length>1&&<section className="outcome-branches"><header><div><small>ФИЛИАЛЫ</small><h3>Где программа лучше возвращает клиентов?</h3></div><Link href="/branches">Управлять филиалами</Link></header><div>{outcomes.branches.slice(0,4).map((branch,index)=><article key={branch.id}><b>{index+1}</b><span><strong>{branch.name}</strong><small>{branch.returnedCustomers} вернулись · {branch.visits} посещений</small></span><div><strong>{money(branch.revenue)}</strong><small>{branch.rewards} наград выдано</small></div></article>)}</div></section>}</section>}
@@ -182,7 +182,7 @@ export function AnalyticsPage() {
             <header><div><span>СЛЕДУЮЩИЙ ШАГ</span><h2 id="recommendations-title">Что сделать сегодня</h2></div><TrendingUp /></header>
             <div>
               {data.audience.atRisk > 0 && <Link href="/campaigns"><UserX /><span><strong>Вернуть клиентов</strong><small>{data.audience.atRisk} гостей давно не возвращались. Запустите персональное предложение.</small></span><b>Открыть кампании</b></Link>}
-              {data.audience.new > data.audience.repeatActive && <Link href="/automations"><Repeat2 /><span><strong>Помочь новым гостям вернуться</strong><small>Новых клиентов больше, чем повторных визитов. Напоминание после первого посещения поможет удержанию.</small></span><b>Настроить напоминание</b></Link>}
+              {data.audience.new > data.audience.repeatActive && <Link href="/campaigns"><Repeat2 /><span><strong>Помочь новым гостям вернуться</strong><small>Новых клиентов больше, чем повторных визитов. Напоминание после первого посещения поможет удержанию.</small></span><b>Настроить сообщение</b></Link>}
               {!data.audience.atRisk && data.audience.new <= data.audience.repeatActive && <Link href="/scanner"><Users /><span><strong>Провести следующий визит</strong><small>Откройте Staff Mode, когда придёт клиент — данные обновятся автоматически.</small></span><b>Открыть Staff Mode</b></Link>}
             </div>
           </section>

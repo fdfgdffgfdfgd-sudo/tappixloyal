@@ -32,7 +32,6 @@ const items: readonly (readonly [string, readonly (readonly [string, LucideIcon,
   ["Аккаунт", [["/settings", Settings, "Настройки"], ["/subscription", CreditCard, "Тариф и оплата"]]],
 ] as const;
 const settingsRoutes = new Set([
-  "/branches",
   "/employees",
   "/bookings",
   "/api-keys",

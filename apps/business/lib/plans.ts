@@ -20,7 +20,7 @@ export const planPresentation = {
   },
   pro: {
     locations: "До 100 филиалов",
-    features: ["Всё из Pro", "Аналитика по филиалам", "Расширенные роли", "API и webhooks", "Увеличенные лимиты"],
+    features: ["Всё из тарифа Pro", "Аналитика по филиалам", "Расширенные роли", "API и webhooks", "Увеличенные лимиты"],
   },
 } as const;
 

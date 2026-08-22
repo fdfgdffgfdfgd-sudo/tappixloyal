@@ -16,41 +16,41 @@
 
 :root {
   /* Semantic tokens — design-system/tappix/MASTER.md */
-  --app-bg: #f8fafc;
-  --surface: #ffffff;
-  --surface-subtle: #f1f5f9;
-  --text: #0f172a;
+  --app-bg: #f3f1ec;
+  --surface: #fffdf8;
+  --surface-subtle: #ece9e1;
+  --text: #171916;
   /* MASTER.md называет здесь #64748b, но на --surface-subtle это даёт 4.34:1
    * при требуемых тем же документом 4.5:1 — палитра противоречила собственному
    * требованию AA. #5f6f86 — самый светлый оттенок, проходящий на всех трёх
    * фонах (4.67 в худшем случае). */
-  --text-muted: #5f6f86;
-  --border: #e2e8f0;
-  --accent: #6352ee;
-  --accent-hover: #5140da;
-  --accent-soft: #eef0ff;
-  --success: #16794b;
-  --success-soft: #ecfdf3;
-  --warning: #a15c07;
-  --warning-soft: #fff7e6;
-  --danger: #b42335;
-  --danger-soft: #fff1f2;
-  --focus: #6352ee;
+  --text-muted: #5d6158;
+  --border: #dcd8ce;
+  --accent: #825720;
+  --accent-hover: #79511e;
+  --accent-soft: #f2e8d7;
+  --success: #28664d;
+  --success-soft: #e8f2ec;
+  --warning: #8b5d12;
+  --warning-soft: #f8edd7;
+  --danger: #a3423f;
+  --danger-soft: #fae9e7;
+  --focus: #9a6d2f;
 
   /* Оттенки, которых в MASTER.md нет, но которые реально используются. */
-  --border-strong: #cbd5e1;
-  --text-tertiary: #758195;
+  --border-strong: #c8c1b4;
+  --text-tertiary: #777b72;
 
   /* Форма, тени, движение. Радиусы приведены к MASTER.md — controls 9–11,
    * sections 14–18. Тени и длительности сохраняют действующие значения. */
-  --radius-sm: 10px;
-  --radius: 14px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .04);
-  --shadow-md: 0 12px 32px rgba(15, 23, 42, .08);
-  --shadow: 0 12px 30px rgba(42, 34, 88, .07);
+  --radius-sm: 12px;
+  --radius: 18px;
+  --shadow-sm: 0 1px 1px rgba(31, 28, 22, .04);
+  --shadow-md: 0 18px 48px rgba(31, 28, 22, .09);
+  --shadow: 0 16px 40px rgba(31, 28, 22, .07);
   --ease: cubic-bezier(.2, .8, .2, 1);
   --motion: 180ms cubic-bezier(.2, .8, .2, 1);
-  --focus-ring: 0 0 0 3px rgba(99, 82, 238, .24);
+  --focus-ring: 0 0 0 3px rgba(154, 109, 47, .24);
 
   /* --- Совместимость. Ниже нет ни одного нового значения. --- */
 
