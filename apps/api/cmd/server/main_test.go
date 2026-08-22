@@ -10,18 +10,23 @@ import (
 // stopped caring.
 func productionDefaults() map[string]string {
 	return map[string]string{
-		"APP_ENV":                  "production",
-		"DATABASE_URL":             "postgres://tappix:7gK9pL2vR4xN6mQ8@db:5432/tappix?sslmode=require",
-		"JWT_SECRET":               "d1f4a7b0c3e6h9k2m5p8s1v4y7B0E3H6",
-		"APP_URL":                  "https://app.tappix.kz",
-		"SMTP_HOST":                "smtp.example.com",
-		"SMTP_USERNAME":            "tappix",
-		"SMTP_PASSWORD":            "strong-password",
-		"SMTP_TLS":                 "true",
-		"WHATSAPP_ACCESS_TOKEN":    "token",
-		"WHATSAPP_PHONE_NUMBER_ID": "phone",
-		"METRICS_TOKEN":            "metrics-token",
-		"OTP_DEV_MODE":             "false",
+		"APP_ENV":                    "production",
+		"DATABASE_URL":               "postgres://tappix:7gK9pL2vR4xN6mQ8@db:5432/tappix?sslmode=require",
+		"JWT_SECRET":                 "d1f4a7b0c3e6h9k2m5p8s1v4y7B0E3H6",
+		"INTEGRATION_ENCRYPTION_KEY": "a7c4e1f8b5d2g9h6k3m0p7s4v1y8B5E2",
+		"REDIS_ADDR":                 "redis.internal:6379",
+		"APP_URL":                    "https://app.tappix.kz",
+		"SMTP_HOST":                  "smtp.example.com",
+		"SMTP_FROM":                  "Tappix <noreply@tappix.kz>",
+		"SMTP_USERNAME":              "tappix",
+		"SMTP_PASSWORD":              "strong-password",
+		"SMTP_TLS":                   "true",
+		"WHATSAPP_ACCESS_TOKEN":      "token",
+		"WHATSAPP_PHONE_NUMBER_ID":   "phone",
+		"WHATSAPP_APP_SECRET":        "app-secret",
+		"WHATSAPP_VERIFY_TOKEN":      "verify-token",
+		"METRICS_TOKEN":              "metrics-token",
+		"OTP_DEV_MODE":               "false",
 	}
 }
 
@@ -57,6 +62,7 @@ func TestProductionGuards(t *testing.T) {
 		{"public address is not HTTPS", "APP_URL", "http://app.tappix.kz", "APP_URL"},
 		{"metrics token missing", "METRICS_TOKEN", "", "METRICS_TOKEN"},
 		{"database url missing", "DATABASE_URL", "", "DATABASE_URL"},
+		{"integration key missing", "INTEGRATION_ENCRYPTION_KEY", "", "INTEGRATION_ENCRYPTION_KEY"},
 		{"whatsapp token missing", "WHATSAPP_ACCESS_TOKEN", "", "WHATSAPP_ACCESS_TOKEN"},
 	}
 

@@ -10,6 +10,7 @@
     "test": "npm run test:api && npm run test:unit && npm run lint && npm run build && npm run test:integration",
     "db:up": "docker compose up -d postgres redis",
     "db:migrate": "sh infrastructure/scripts/migrate.sh",
+    "db:seed-demo": "sh infrastructure/scripts/seed-demo.sh",
     "db:seed-guest-engagement": "docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U tappix -d tappix < apps/api/migrations/000016_guest_engagement.up.sql",
     "api:up": "docker compose up -d --build api",
     "stack:up": "docker compose up -d --build",

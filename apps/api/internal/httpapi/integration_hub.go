@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -116,6 +117,10 @@ func (a *api) listIntegrationConnections(w http.ResponseWriter, r *http.Request)
 }
 
 func (a *api) createIntegrationConnection(w http.ResponseWriter, r *http.Request) {
+	if ok, limit := a.checkLimit(r.Context(), companyID(r), "integrations"); !ok {
+		fail(w, 409, "PLAN_UPGRADE_REQUIRED", limitMessage("интеграций", limit))
+		return
+	}
 	var in integrationConnectionInput
 	if !decode(w, r, &in) {
 		return
@@ -140,15 +145,34 @@ func (a *api) createIntegrationConnection(w http.ResponseWriter, r *http.Request
 		return
 	}
 	config, _ := json.Marshal(in.Config)
+	status := "draft"
+	capabilities := []string{}
+	if in.Provider == "poster" {
+		plainCredentials := map[string]string{}
+		for key, value := range in.Credentials {
+			plainCredentials[key] = strings.TrimSpace(fmt.Sprint(value))
+		}
+		adapter := posintegration.NewPosterAdapter(&http.Client{Timeout: 20 * time.Second}, envOr("POSTER_API_BASE_URL", "https://joinposter.com/api"))
+		locations, connectionErr := adapter.ListLocations(r.Context(), posintegration.Connection{Provider: "poster", Credentials: plainCredentials})
+		if connectionErr != nil {
+			fail(w, 422, "PROVIDER_AUTH_FAILED", "Poster не подтвердил подключение. Проверьте access token")
+			return
+		}
+		status = "active"
+		capabilities = []string{"locations", "customers", "transactions", "reconciliation"}
+		if in.ExternalAccountID == "" && len(locations) > 0 {
+			in.ExternalAccountID = locations[0].ExternalID
+		}
+	}
 	claims, _ := r.Context().Value(identityKey).(tokenClaims)
 	var id string
-	err = a.db.QueryRow(r.Context(), `INSERT INTO integration_connections(company_id,provider,name,status,auth_type,encrypted_credentials,config,external_account_id,created_by)
-		VALUES($1,$2,$3,'draft',$4,$5,$6,nullif($7,''),$8) RETURNING id`, companyID(r), in.Provider, in.Name, in.AuthType, encrypted, config, in.ExternalAccountID, claims.Subject).Scan(&id)
+	err = a.db.QueryRow(r.Context(), `INSERT INTO integration_connections(company_id,provider,name,status,auth_type,encrypted_credentials,config,external_account_id,capabilities,created_by,last_connected_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,nullif($8,''),$9,$10,CASE WHEN $4='active' THEN now() END) RETURNING id`, companyID(r), in.Provider, in.Name, status, in.AuthType, encrypted, config, in.ExternalAccountID, capabilities, claims.Subject).Scan(&id)
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось создать подключение")
 		return
 	}
-	write(w, 201, envelope{Success: true, Data: map[string]any{"id": id, "provider": in.Provider, "name": in.Name, "status": "draft"}})
+	write(w, 201, envelope{Success: true, Data: map[string]any{"id": id, "provider": in.Provider, "name": in.Name, "status": status, "externalAccountId": in.ExternalAccountID, "capabilities": capabilities}})
 }
 
 func (a *api) createInboundWebhook(w http.ResponseWriter, r *http.Request) {

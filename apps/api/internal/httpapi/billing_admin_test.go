@@ -7,10 +7,11 @@ import (
 
 func TestNormalizePlanCode(t *testing.T) {
 	tests := map[string]string{
+		"Start":      "starter",
 		"Starter":    "starter",
 		" growth ":   "growth",
-		"Business":   "growth",
-		"PRO":        "pro",
+		"Business":   "pro",
+		"PRO":        "growth",
 		"enterprise": "pro",
 		"unknown":    "",
 	}

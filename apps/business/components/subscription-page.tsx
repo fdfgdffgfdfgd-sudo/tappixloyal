@@ -17,6 +17,7 @@ type Subscription = {
   currency: string;
   billingPeriod?: string;
   currentPeriodEndsAt?: string;
+  remainingDays?: number;
   modules?: string[];
   entitlements?: Record<string, { enabled: boolean; limit?: number | null }>;
 };
@@ -29,10 +30,10 @@ export function SubscriptionPage() {
   const [msg, setMsg] = useState("");
   useEffect(() => {
     Promise.all([api<Subscription>("/subscription"),api<SubscriptionModule[]>("/modules")])
-      .then(([subscription,moduleItems])=>{setValue(subscription);setAnnual(subscription.billingPeriod==="annual");setModules(moduleItems)})
+      .then(([subscription,moduleItems])=>{setValue(subscription);setAnnual(subscription.billingPeriod==="yearly");setModules(moduleItems)})
       .catch((e) => setMsg(e.message));
   }, []);
-  const currentPlan = value ? plans.find(plan => plan.id === (value.plan.toLowerCase()==="business"?"growth":value.plan.toLowerCase()==="enterprise"?"pro":value.plan.toLowerCase())) : undefined;
+  const currentPlan = value ? plans.find(plan => plan.id === value.tier) : undefined;
   useEffect(() => {
     fetch(`${API_URL}/public/plans`).then(response => response.json()).then(result => result.success && setPlans(result.data)).catch(() => {});
   }, []);
@@ -52,14 +53,14 @@ export function SubscriptionPage() {
             <p>Текущий тариф</p>
             <h2>{value.plan}</h2>
             <strong>
-              {(value.billingPeriod==="annual"&&currentPlan?currentPlan.annualPrice:value.amount).toLocaleString("ru-RU")} {value.currency} / {value.billingPeriod==="annual"?"год":"месяц"}
+              {(value.billingPeriod==="yearly"&&currentPlan?currentPlan.annualPrice:value.amount).toLocaleString("ru-RU")} {value.currency} / {value.billingPeriod==="yearly"?"год":"месяц"}
             </strong>
             <div className="subscription-meta">
               <span>
                 Статус <b>{subscriptionStatusLabel(value.status)}</b>
               </span>
               <span>
-                Период <b>{value.billingPeriod==="annual"?"Годовой":"Ежемесячный"}</b>
+                Период <b>{value.billingPeriod==="yearly"?"Годовой":"Ежемесячный"}</b>
               </span>
               <span>
                 Следующее продление{" "}
@@ -71,6 +72,7 @@ export function SubscriptionPage() {
                     : "Пробный период"}
                 </b>
               </span>
+              {value.status === "trial" && <span>Пробный период <b>{value.remainingDays || 0} дней осталось</b></span>}
             </div>
             <div className="subscription-live-state">
               <div><Check/><span><b>{modules.filter(module=>module.enabled).length} функций активировано</b><small>Доступ пересчитывается сервером по текущему тарифу</small></span></div>
@@ -95,12 +97,7 @@ export function SubscriptionPage() {
             </div>
             <div className="pricing-grid">
               {plans.map((plan) => {
-                const current =
-                  value.plan.toLowerCase() ===
-                    (plan.id === "growth"
-                      ? "business"
-                      : plan.id === "pro" ? "enterprise" : plan.id) ||
-                  value.plan.toLowerCase() === plan.id;
+                const current = value.tier === plan.id;
                 const presentation = planPresentation[plan.id];
                 return (
                   <article

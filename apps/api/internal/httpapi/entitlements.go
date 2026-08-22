@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -13,9 +14,16 @@ type entitlementSnapshot struct {
 	Used    int
 }
 
+func limitMessage(noun string, limit entitlementSnapshot) string {
+	if limit.Limit == nil {
+		return "Функция недоступна на текущем тарифе"
+	}
+	return fmt.Sprintf("Лимит %s на текущем тарифе: %d из %d", noun, limit.Used, *limit.Limit)
+}
+
 func (a *api) entitlement(ctx context.Context, company, code string) entitlementSnapshot {
 	result := entitlementSnapshot{}
-	_ = a.db.QueryRow(ctx, `SELECT coalesce(o.enabled,e.enabled,false),coalesce(o.limit_value,e.limit_value) FROM subscriptions s LEFT JOIN plan_entitlements e ON e.plan_code=CASE lower(s.plan_code) WHEN 'business' THEN 'growth' WHEN 'enterprise' THEN 'pro' ELSE lower(s.plan_code) END AND e.code=$2 LEFT JOIN LATERAL (SELECT enabled,limit_value FROM subscription_overrides WHERE company_id=s.company_id AND entitlement_code=$2 AND (valid_until IS NULL OR valid_until>now()) ORDER BY created_at DESC LIMIT 1) o ON true WHERE s.company_id=$1 AND s.status IN('trial','active','past_due') ORDER BY s.created_at DESC LIMIT 1`, company, code).Scan(&result.Enabled, &result.Limit)
+	_ = a.db.QueryRow(ctx, `SELECT coalesce(o.enabled,e.enabled,false),coalesce(o.limit_value,e.limit_value) FROM subscriptions s LEFT JOIN plan_entitlements e ON e.plan_code=CASE lower(s.plan_code) WHEN 'start' THEN 'starter' WHEN 'business' THEN 'pro' WHEN 'enterprise' THEN 'pro' ELSE lower(s.plan_code) END AND e.code=$2 LEFT JOIN LATERAL (SELECT enabled,limit_value FROM subscription_overrides WHERE company_id=s.company_id AND entitlement_code=$2 AND (valid_until IS NULL OR valid_until>now()) ORDER BY created_at DESC LIMIT 1) o ON true WHERE s.company_id=$1 AND s.status IN('trial','active','past_due') ORDER BY s.created_at DESC LIMIT 1`, company, code).Scan(&result.Enabled, &result.Limit)
 	switch code {
 	case "customers":
 		_ = a.db.QueryRow(ctx, `SELECT count(*) FROM customers WHERE company_id=$1 AND deleted_at IS NULL`, company).Scan(&result.Used)
@@ -25,6 +33,10 @@ func (a *api) entitlement(ctx context.Context, company, code string) entitlement
 		_ = a.db.QueryRow(ctx, `SELECT count(*) FROM devices WHERE company_id=$1`, company).Scan(&result.Used)
 	case "messages_monthly":
 		_ = a.db.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE company_id=$1 AND created_at>=date_trunc('month',now())`, company).Scan(&result.Used)
+	case "branches":
+		_ = a.db.QueryRow(ctx, `SELECT count(*) FROM branches WHERE company_id=$1 AND deleted_at IS NULL`, company).Scan(&result.Used)
+	case "integrations":
+		_ = a.db.QueryRow(ctx, `SELECT count(*) FROM integration_connections WHERE company_id=$1 AND deleted_at IS NULL AND status<>'disabled'`, company).Scan(&result.Used)
 	}
 	return result
 }

@@ -72,7 +72,12 @@ func processNextPosterJob(ctx context.Context, db *pgxpool.Pool, key []byte, cli
 	resultJSON, _ := json.Marshal(result)
 	_, err = db.Exec(ctx, `UPDATE integration_jobs SET status='succeeded',completed_at=now(),last_error=NULL,result=$2 WHERE id=$1`, jobID, resultJSON)
 	if err == nil {
-		_, err = db.Exec(ctx, `UPDATE integration_connections SET status='active',last_connected_at=coalesce(last_connected_at,now()),last_sync_at=now(),last_error_code=NULL,last_error_message=NULL,updated_at=now() WHERE id=$1 AND company_id=$2`, connectionID, companyID)
+		failed, _ := result["failed"].(int)
+		if failed > 0 {
+			_, err = db.Exec(ctx, `UPDATE integration_connections SET status='degraded',last_sync_at=now(),last_error_code='PARTIAL_SYNC',last_error_message=$3,updated_at=now() WHERE id=$1 AND company_id=$2`, connectionID, companyID, fmt.Sprintf("%d records require attention", failed))
+		} else {
+			_, err = db.Exec(ctx, `UPDATE integration_connections SET status='active',last_connected_at=coalesce(last_connected_at,now()),last_sync_at=now(),last_error_code=NULL,last_error_message=NULL,updated_at=now() WHERE id=$1 AND company_id=$2`, connectionID, companyID)
+		}
 	}
 	return err
 }
@@ -202,7 +207,8 @@ func importPosterTransactions(ctx context.Context, db *pgxpool.Pool, adapter *po
 		return nil, err
 	}
 	service := posintegration.NewService(db)
-	imported, duplicates, skipped := 0, 0, 0
+	created, duplicates, skipped, failed := 0, 0, 0, 0
+	failures := []map[string]string{}
 	for _, transaction := range batch.Transactions {
 		if transaction.ExternalID == "<nil>" || transaction.ExternalID == "" || transaction.OccurredAt.IsZero() {
 			skipped++
@@ -210,17 +216,19 @@ func importPosterTransactions(ctx context.Context, db *pgxpool.Pool, adapter *po
 		}
 		result, ingestErr := service.Ingest(ctx, transaction)
 		if ingestErr != nil {
-			return nil, fmt.Errorf("Poster transaction %s: %w", transaction.ExternalID, ingestErr)
+			failed++
+			failures = append(failures, map[string]string{"externalId": transaction.ExternalID, "error": truncate(ingestErr.Error(), 240)})
+			continue
 		}
 		if result.Duplicate {
 			duplicates++
 		} else {
-			imported++
+			created++
 		}
 	}
 	_, _ = db.Exec(ctx, `INSERT INTO integration_sync_cursors(company_id,connection_id,resource,cursor_value,watermark_at,last_success_at,last_attempt_at)
 		VALUES($1,$2,'transactions',$3,now(),now(),now()) ON CONFLICT(connection_id,resource) DO UPDATE SET cursor_value=excluded.cursor_value,watermark_at=now(),last_success_at=now(),last_attempt_at=now(),updated_at=now()`, connection.CompanyID, connection.ID, batch.NextCursor)
-	return map[string]any{"received": len(batch.Transactions), "imported": imported, "duplicates": duplicates, "skipped": skipped}, nil
+	return map[string]any{"received": len(batch.Transactions), "processed": created + duplicates + skipped, "created": created, "updated": 0, "duplicates": duplicates, "skipped": skipped, "failed": failed, "failures": failures}, nil
 }
 
 func reconcilePoster(ctx context.Context, db *pgxpool.Pool, adapter *posintegration.PosterAdapter, connection posintegration.Connection) (map[string]any, error) {
@@ -237,9 +245,14 @@ func reconcilePoster(ctx context.Context, db *pgxpool.Pool, adapter *posintegrat
 	}
 	received, _ := result["received"].(int)
 	duplicates, _ := result["duplicates"].(int)
-	imported, _ := result["imported"].(int)
-	_, err = db.Exec(ctx, `UPDATE reconciliation_runs SET status='succeeded',provider_count=$2,local_count=$3,missing_count=$4,repaired_count=$4,details=$5,completed_at=now() WHERE id=$1`, runID, received, duplicates+imported, imported, mustJSON(result))
-	return map[string]any{"runId": runID, "providerCount": received, "repaired": imported}, err
+	created, _ := result["created"].(int)
+	failed, _ := result["failed"].(int)
+	status := "succeeded"
+	if failed > 0 {
+		status = "partial"
+	}
+	_, err = db.Exec(ctx, `UPDATE reconciliation_runs SET status=$2,provider_count=$3,local_count=$4,missing_count=$5,repaired_count=$5,details=$6,completed_at=now() WHERE id=$1`, runID, status, received, duplicates+created, created, mustJSON(result))
+	return map[string]any{"runId": runID, "providerCount": received, "processed": created + duplicates, "created": created, "skipped": result["skipped"], "failed": failed, "status": status}, err
 }
 
 func mustJSON(value any) json.RawMessage {

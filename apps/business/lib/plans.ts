@@ -12,14 +12,14 @@ export type PlanDefinition = {
 export const planPresentation = {
   starter: {
     locations: "1 филиал",
-    features: ["CRM и клиентская база", "QR loyalty и Staff Mode", "Штампы, бонусы и награды", "Базовая аналитика", "Email-кампании"],
+    features: ["CRM и клиентская база", "QR loyalty и Staff Mode", "Штампы, бонусы и награды", "Базовая аналитика", "1 филиал и 2 сотрудника"],
   },
   growth: {
-    locations: "1–2 филиала",
+    locations: "До 3 филиалов",
     features: ["Всё из Start", "Сегменты и удержание", "Автоматические кампании", "Poster и WhatsApp", "Расширенные отчёты и экспорт"],
   },
   pro: {
-    locations: "До 5 филиалов",
+    locations: "До 100 филиалов",
     features: ["Всё из Pro", "Аналитика по филиалам", "Расширенные роли", "API и webhooks", "Увеличенные лимиты"],
   },
 } as const;

@@ -244,7 +244,7 @@ func (a *api) integrationSyncStatus(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "INTEGRATION_NOT_FOUND", "Подключение не найдено")
 		return
 	}
-	rows, err := a.db.Query(r.Context(), `SELECT id,job_type,resource,status,attempts,max_attempts,created_at,started_at,completed_at,coalesce(last_error,'') FROM integration_jobs WHERE company_id=$1 AND connection_id=$2 ORDER BY created_at DESC LIMIT 30`, companyID(r), r.PathValue("id"))
+	rows, err := a.db.Query(r.Context(), `SELECT id,job_type,resource,status,attempts,max_attempts,created_at,started_at,completed_at,coalesce(last_error,''),result FROM integration_jobs WHERE company_id=$1 AND connection_id=$2 ORDER BY created_at DESC LIMIT 30`, companyID(r), r.PathValue("id"))
 	if err != nil {
 		fail(w, 500, "SYNC_STATUS_FAILED", "Не удалось загрузить состояние синхронизации")
 		return
@@ -256,11 +256,12 @@ func (a *api) integrationSyncStatus(w http.ResponseWriter, r *http.Request) {
 		var attempts, maxAttempts int
 		var created time.Time
 		var started, completed *time.Time
-		if err := rows.Scan(&id, &jobType, &resource, &jobStatus, &attempts, &maxAttempts, &created, &started, &completed, &lastError); err != nil {
+		var result json.RawMessage
+		if err := rows.Scan(&id, &jobType, &resource, &jobStatus, &attempts, &maxAttempts, &created, &started, &completed, &lastError, &result); err != nil {
 			fail(w, 500, "SYNC_STATUS_FAILED", "Не удалось загрузить состояние синхронизации")
 			return
 		}
-		jobs = append(jobs, map[string]any{"id": id, "jobType": jobType, "resource": resource, "status": jobStatus, "attempts": attempts, "maxAttempts": maxAttempts, "createdAt": created, "startedAt": started, "completedAt": completed, "lastError": lastError})
+		jobs = append(jobs, map[string]any{"id": id, "jobType": jobType, "resource": resource, "status": jobStatus, "attempts": attempts, "maxAttempts": maxAttempts, "createdAt": created, "startedAt": started, "completedAt": completed, "lastError": lastError, "result": result})
 	}
 	if rows.Err() != nil {
 		fail(w, 500, "SYNC_STATUS_FAILED", "Не удалось загрузить состояние синхронизации")

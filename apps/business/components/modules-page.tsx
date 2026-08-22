@@ -17,16 +17,16 @@ export function ModulesPage() {
     void load();
   }, []);
   const planAccess: Record<string, string> = {
-    core: "Starter",
-    crm: "Starter",
-    loyalty: "Starter",
-    reviews: "Starter",
-    analytics: "Growth",
-    email: "Growth",
-    sms: "Growth",
-    telegram: "Growth",
-    booking: "Growth",
-    website: "Growth",
+    core: "Start",
+    crm: "Start",
+    loyalty: "Start",
+    reviews: "Start",
+    analytics: "Pro",
+    email: "Pro",
+    sms: "Pro",
+    telegram: "Pro",
+    booking: "Pro",
+    website: "Pro",
     api: "Pro",
   };
   return (

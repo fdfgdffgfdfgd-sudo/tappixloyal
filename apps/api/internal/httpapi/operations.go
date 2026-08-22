@@ -168,14 +168,16 @@ func (a *api) getSubscription(w http.ResponseWriter, r *http.Request) {
 	var end *time.Time
 	err := a.db.QueryRow(r.Context(), `SELECT id,plan_code,status,amount,currency,billing_period,starts_at,current_period_ends_at FROM subscriptions WHERE company_id=$1 AND status IN('trial','active','past_due') ORDER BY created_at DESC LIMIT 1`, companyID(r)).Scan(&id, &plan, &status, &amount, &currency, &period, &start, &end)
 	if errors.Is(err, pgx.ErrNoRows) {
-		write(w, 200, envelope{Success: true, Data: map[string]any{"plan": "Starter", "status": "trial", "amount": 0, "currency": "KZT", "modules": []string{"core"}}})
+		write(w, 200, envelope{Success: true, Data: map[string]any{"plan": "Start", "tier": "starter", "status": "trial", "amount": 0, "currency": "KZT", "modules": []string{"core"}}})
 		return
 	}
 	if err != nil {
 		fail(w, 500, "DATABASE_ERROR", "Не удалось загрузить подписку")
 		return
 	}
-	planCode := normalizePlanCode(plan)
+	planCode := normalizeStoredPlanCode(plan)
+	planName := plan
+	_ = a.db.QueryRow(r.Context(), `SELECT name FROM plans_v2 WHERE code=$1`, planCode).Scan(&planName)
 	modules := []string{}
 	// An empty list reads as "nothing is enabled", so a failed query would hide
 	// features the company pays for.
@@ -224,7 +226,11 @@ func (a *api) getSubscription(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	write(w, 200, envelope{Success: true, Data: map[string]any{"id": id, "plan": plan, "tier": planCode, "status": status, "amount": amount, "currency": currency, "billingPeriod": period, "startsAt": start, "currentPeriodEndsAt": end, "modules": modules, "entitlements": entitlements}})
+	remainingDays := 0
+	if end != nil && end.After(time.Now()) {
+		remainingDays = int(time.Until(*end).Hours()/24) + 1
+	}
+	write(w, 200, envelope{Success: true, Data: map[string]any{"id": id, "plan": planName, "tier": planCode, "status": status, "amount": amount, "currency": currency, "billingPeriod": period, "startsAt": start, "currentPeriodEndsAt": end, "remainingDays": remainingDays, "modules": modules, "entitlements": entitlements}})
 }
 
 func (a *api) listDevices(w http.ResponseWriter, r *http.Request) {

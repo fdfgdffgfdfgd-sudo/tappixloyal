@@ -45,6 +45,10 @@ func (a *api) createBranch(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "VALIDATION_ERROR", "Укажите название и адрес филиала")
 		return
 	}
+	if ok, limit := a.checkLimit(r.Context(), companyID(r), "branches"); !ok {
+		fail(w, 409, "LIMIT_REACHED", limitMessage("филиалов", limit))
+		return
+	}
 	var id string
 	err := a.db.QueryRow(r.Context(), `INSERT INTO branches(company_id,name,address,phone) VALUES($1,$2,$3,$4) RETURNING id`, companyID(r), in.Name, in.Address, in.Phone).Scan(&id)
 	if err != nil {

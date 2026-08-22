@@ -117,7 +117,7 @@ func TestPosterWorkerPayloadDirectIngestComparison(t *testing.T) {
 	}
 }
 
-func TestPosterWorkerImportCannotReachPartialProgressWithCurrentIngestSQL(t *testing.T) {
+func TestPosterWorkerReportsPartialProgressAndKeepsValidRecords(t *testing.T) {
 	f := newAdversarialBookingFixture(t)
 	_, _ = f.db.Exec(t.Context(), `DELETE FROM outbox_events WHERE idempotency_key IN ('outbox:poster:poster-first','outbox:poster:poster-second')`)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -156,8 +156,8 @@ func TestPosterWorkerImportCannotReachPartialProgressWithCurrentIngestSQL(t *tes
 		_, _ = f.db.Exec(context.Background(), `DELETE FROM integration_connections WHERE id=$1`, connectionID)
 	})
 	err = processNextPosterJob(t.Context(), f.db, key, server.Client())
-	if err == nil || !strings.Contains(err.Error(), "amounts") {
-		t.Fatalf("expected second-record validation error, got %v", err)
+	if err != nil {
+		t.Fatalf("partial record failure must not discard valid records: %v", err)
 	}
 	var count int
 	if err = f.db.QueryRow(t.Context(), `SELECT count(*) FROM sales_transactions WHERE company_id=$1 AND provider='poster'`, f.company).Scan(&count); err != nil {
@@ -168,10 +168,18 @@ func TestPosterWorkerImportCannotReachPartialProgressWithCurrentIngestSQL(t *tes
 	}
 	var status string
 	var attempts int
-	if err = f.db.QueryRow(t.Context(), `SELECT status,attempts FROM integration_jobs WHERE id=$1`, jobID).Scan(&status, &attempts); err != nil {
+	var failed, processed int
+	if err = f.db.QueryRow(t.Context(), `SELECT status,attempts,coalesce((result->>'failed')::int,0),coalesce((result->>'processed')::int,0) FROM integration_jobs WHERE id=$1`, jobID).Scan(&status, &attempts, &failed, &processed); err != nil {
 		t.Fatal(err)
 	}
-	if status != "failed" || attempts != 1 {
-		t.Fatalf("unexpected failed job state: %s/%d", status, attempts)
+	if status != "succeeded" || attempts != 1 || failed != 1 || processed != 1 {
+		t.Fatalf("unexpected partial job state: %s attempts=%d failed=%d processed=%d", status, attempts, failed, processed)
+	}
+	var connectionStatus string
+	if err = f.db.QueryRow(t.Context(), `SELECT status FROM integration_connections WHERE id=$1`, connectionID).Scan(&connectionStatus); err != nil {
+		t.Fatal(err)
+	}
+	if connectionStatus != "degraded" {
+		t.Fatalf("partial sync must be visible on connection, got %s", connectionStatus)
 	}
 }

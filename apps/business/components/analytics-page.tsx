@@ -32,7 +32,7 @@ type AnalyticsData = {
   }[];
   peakHour: number;
 };
-type AnalyticsSubscription = { plan: string; status: string };
+type AnalyticsSubscription = { plan: string; tier: string; status: string };
 type ProAnalytics = {
   currency: string;
   repeatPurchase: { windows: { days: number; customers: number; repeatCustomers: number; repeatPurchaseRate: number }[]; averageDaysToSecondPurchase: number; secondPurchaseConversion: number };
@@ -68,11 +68,11 @@ export function AnalyticsPage() {
     const days=period==="week"?7:period==="quarter"?90:30;
     const branchQuery = branchId ? `&branchId=${encodeURIComponent(branchId)}` : "";
     Promise.all([api<AnalyticsData>(`/analytics?period=${period}${branchQuery}`),api<AnalyticsSubscription>("/subscription"),api<BusinessOutcomes>(`/analytics/outcomes?days=${days}${branchId ? `&branchId=${encodeURIComponent(branchId)}` : ""}`), branches.length ? Promise.resolve([] as {id:string;name:string}[]) : api<{id:string;name:string}[]>("/branches")])
-      .then(([analytics, plan, result, availableBranches]) => {setData(analytics);setSubscription(plan);setOutcomes(result);if(availableBranches.length)setBranches(availableBranches);const normalized=plan.plan.toLowerCase()==="business"||plan.plan.toLowerCase()==="growth"?"growth":plan.plan.toLowerCase();if(normalized==="pro")return Promise.all([api<ProAnalytics>("/analytics/business"),api<BonusLiability>("/analytics/bonus-liability")]).then(([business,bonus])=>{setProData(business);setLiability(bonus)});setProData(null);setLiability(null)})
+      .then(([analytics, plan, result, availableBranches]) => {setData(analytics);setSubscription(plan);setOutcomes(result);if(availableBranches.length)setBranches(availableBranches);if(plan.tier==="growth"||plan.tier==="pro")return Promise.all([api<ProAnalytics>("/analytics/business"),api<BonusLiability>("/analytics/bonus-liability")]).then(([business,bonus])=>{setProData(business);setLiability(bonus)});setProData(null);setLiability(null)})
       .catch((e) => setMsg(e.message));
   }, [period, branchId]);
-  const tier = subscription?.plan.toLowerCase()==="business"?"growth":subscription?.plan.toLowerCase()||"starter";
-  const tierName = tier==="pro"?"Pro":tier==="growth"?"Growth":"Starter";
+  const tier = subscription?.tier || "starter";
+  const tierName = tier==="pro"?"Business":tier==="growth"?"Pro":"Start";
   const money = (value:number) => `${Math.round(value).toLocaleString("ru-RU")} ₸`;
   const max = Math.max(1, ...(data?.series.map((x) => x.visits) || [1]));
   return (

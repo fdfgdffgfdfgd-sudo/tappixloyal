@@ -60,7 +60,7 @@ func validateEnvironment(getenv func(string) string) error {
 	if strings.ToLower(strings.TrimSpace(getenv("APP_ENV"))) != "production" {
 		return nil
 	}
-	required := []string{"DATABASE_URL", "JWT_SECRET", "APP_URL", "SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "METRICS_TOKEN"}
+	required := []string{"DATABASE_URL", "REDIS_ADDR", "JWT_SECRET", "INTEGRATION_ENCRYPTION_KEY", "APP_URL", "SMTP_HOST", "SMTP_FROM", "SMTP_USERNAME", "SMTP_PASSWORD", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN", "METRICS_TOKEN"}
 	missing := []string{}
 	for _, key := range required {
 		if strings.TrimSpace(getenv(key)) == "" {
@@ -85,6 +85,9 @@ func validateEnvironment(getenv func(string) string) error {
 	if strings.Contains(database, "tappix_local") || strings.Contains(database, "changeme") || strings.Contains(database, "password") {
 		return fmt.Errorf("DATABASE_URL contains an unsafe production credential")
 	}
+	if !strings.Contains(database, "sslmode=require") && !strings.Contains(database, "sslmode=verify-") {
+		return fmt.Errorf("DATABASE_URL must require TLS in production")
+	}
 	appURL := strings.ToLower(getenv("APP_URL"))
 	if !strings.HasPrefix(appURL, "https://") {
 		return fmt.Errorf("APP_URL must use HTTPS in production")
@@ -107,6 +110,7 @@ func startWorkersWhenSchemaReady(ctx context.Context, db *pgxpool.Pool, secret s
 			httpapi.StartAnalyticsProjectionWorker(ctx, db)
 			httpapi.StartReportWorker(ctx, db, secret)
 			httpapi.StartRewardExpiryWorker(ctx, db)
+			go httpapi.StartSubscriptionLifecycleWorker(ctx, db)
 			slog.Info("background workers started after schema became ready")
 			return
 		}

@@ -61,7 +61,7 @@ jobs:
         run: docker compose up -d --build
 
       - name: Apply database migrations
-        run: npm run db:migrate
+        run: TAPPIX_SEED_DEMO=1 npm run db:migrate
 
       - name: Wait for API
         run: |
@@ -116,7 +116,7 @@ jobs:
         run: docker compose up -d --build
 
       - name: Apply database migrations
-        run: npm run db:migrate
+        run: TAPPIX_SEED_DEMO=1 npm run db:migrate
 
       - name: Wait for web
         run: |

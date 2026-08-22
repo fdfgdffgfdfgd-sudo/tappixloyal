@@ -76,13 +76,31 @@ func (a *api) adminUpdateSubscription(w http.ResponseWriter, r *http.Request) {
 	if in.BillingPeriod == "" {
 		in.BillingPeriod = "monthly"
 	}
+	if in.BillingPeriod == "annual" {
+		in.BillingPeriod = "yearly"
+	}
+	if in.BillingPeriod != "monthly" && in.BillingPeriod != "yearly" {
+		fail(w, 422, "VALIDATION_ERROR", "Период должен быть monthly или yearly")
+		return
+	}
 	planCode := normalizePlanCode(in.Plan)
 	if planCode == "" {
-		fail(w, 422, "VALIDATION_ERROR", "Доступны тарифы Starter, Growth и Pro")
+		fail(w, 422, "VALIDATION_ERROR", "Доступны тарифы Start, Pro и Business")
 		return
 	}
 	if len(in.Modules) == 0 {
 		in.Modules = defaultModulesForPlan(planCode)
+	}
+	priceColumn := "monthly_price"
+	if in.BillingPeriod == "yearly" {
+		priceColumn = "annual_price"
+	}
+	if err := a.db.QueryRow(r.Context(), `SELECT CASE WHEN $2='annual_price' THEN annual_price ELSE monthly_price END FROM plans_v2 WHERE code=$1 AND status='active'`, planCode, priceColumn).Scan(&in.Amount); err != nil {
+		fail(w, 422, "PLAN_NOT_AVAILABLE", "Выбранный тариф недоступен")
+		return
+	}
+	if in.Status == "trial" {
+		in.Amount = 0
 	}
 	var period any
 	if in.PeriodEndsAt != "" {
@@ -96,7 +114,7 @@ func (a *api) adminUpdateSubscription(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 	_, err = tx.Exec(r.Context(), `UPDATE subscriptions SET status='cancelled',cancelled_at=now(),updated_at=now() WHERE company_id=$1 AND status IN('trial','active','past_due')`, r.PathValue("id"))
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `INSERT INTO subscriptions(company_id,plan_code,status,amount,currency,billing_period,current_period_ends_at) VALUES($1,$2,$3,$4,'KZT',$5,$6)`, r.PathValue("id"), in.Plan, in.Status, in.Amount, in.BillingPeriod, period)
+		_, err = tx.Exec(r.Context(), `INSERT INTO subscriptions(company_id,plan_code,status,amount,currency,billing_period,current_period_ends_at) VALUES($1,$2,$3,$4,'KZT',$5,$6)`, r.PathValue("id"), planCode, in.Status, in.Amount, in.BillingPeriod, period)
 	}
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `UPDATE company_modules SET enabled=false,updated_at=now() WHERE company_id=$1 AND module_code NOT IN('core')`, r.PathValue("id"))
@@ -118,11 +136,24 @@ func (a *api) adminUpdateSubscription(w http.ResponseWriter, r *http.Request) {
 
 func normalizePlanCode(plan string) string {
 	switch strings.ToLower(strings.TrimSpace(plan)) {
-	case "starter":
+	case "start", "starter":
 		return "starter"
-	case "business", "growth":
+	case "pro", "growth":
 		return "growth"
-	case "enterprise", "pro":
+	case "business", "enterprise":
+		return "pro"
+	default:
+		return ""
+	}
+}
+
+func normalizeStoredPlanCode(plan string) string {
+	switch strings.ToLower(strings.TrimSpace(plan)) {
+	case "start", "starter":
+		return "starter"
+	case "growth":
+		return "growth"
+	case "business", "enterprise", "pro":
 		return "pro"
 	default:
 		return ""

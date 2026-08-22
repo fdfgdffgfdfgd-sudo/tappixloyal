@@ -81,6 +81,13 @@ curl -fsS -X DELETE -H "Authorization: Bearer $token" "$API_URL/reports/schedule
 assert_get_json integration-connections /integration-connections '.data | type == "array"'
 assert_get_json webhook-deliveries /webhook-deliveries '.data | type == "array"'
 assert_get_json campaigns /campaigns '.data | type == "array"'
+campaign_subject="Stage3 campaign $(date +%s)"
+docker compose exec -T postgres psql -U tappix -d tappix -c "UPDATE customers SET email='stage3.customer@example.test' WHERE id=(SELECT id FROM customers WHERE company_id=(SELECT id FROM companies WHERE slug='dentline') AND deleted_at IS NULL ORDER BY created_at LIMIT 1)" >/dev/null
+campaign=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "{\"name\":\"Stage 3 email delivery\",\"subject\":\"$campaign_subject\",\"body\":\"Здравствуйте, {{name}}\",\"segment\":\"all\"}" "$API_URL/campaigns")
+campaign_id=$(printf '%s' "$campaign" | jq -r '.data.id')
+curl -fsS -H "Authorization: Bearer $token" "$API_URL/campaigns/$campaign_id/preview" | jq -e '.data.total >= 1' >/dev/null
+curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' "$API_URL/campaigns/$campaign_id/send" | jq -e '.data.status == "sent" and .data.sent >= 1 and .data.failed == 0' >/dev/null
+curl -fsS http://localhost:8025/api/v1/messages | jq -e --arg subject "$campaign_subject" '.messages | any(.Subject == $subject)' >/dev/null
 assert_get_json campaign-automations /campaign-automations '.data | length == 6 and ([.[].triggerType] | sort) == (["birthday_bonus","bonus_expiry_3d","winback_30d","near_reward","reward_unlocked","nfc_registration"] | sort)'
 invalid_holdout=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_URL/campaigns" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"name":"Invalid holdout","subject":"Test","body":"Test","segment":"all","holdoutPercent":3}')
 test "$invalid_holdout" = "422"
@@ -287,4 +294,5 @@ curl -fsS -H "Authorization: Bearer $restarted_token" "$API_URL/rewards/$stale_d
 
 docker compose exec -T postgres psql -U tappix -d tappix -Atc "DELETE FROM customer_rewards WHERE id IN ('$stale_dentline','$stale_docmed')" >/dev/null
 
+TAPPIX_TEST_ENV=1 sh infrastructure/scripts/deterministic-analytics-test.sh
 printf '%s\n' 'Tappix integration test: PASS'

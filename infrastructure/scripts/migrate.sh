@@ -30,6 +30,9 @@ for file in apps/api/migrations/*.up.sql; do
   echo "Applying $version: $(basename "$file")"
   $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$file"
   $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c "INSERT INTO schema_migrations(version) VALUES('$version')" >/dev/null
+  if [ "$version" = "000006" ] && [ "${TAPPIX_SEED_DEMO:-}" = "1" ]; then
+    APP_ENV="${APP_ENV:-development}" TAPPIX_SEED_DEMO=1 sh infrastructure/scripts/seed-demo.sh
+  fi
 done
 
 echo "Database migrations are up to date."
