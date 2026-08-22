@@ -24,7 +24,7 @@ type reviewSettingsInput struct {
 }
 
 type analyticsDateRange struct {
-	Key                            string
+	Key                                    string
 	Start, End, PreviousStart, PreviousEnd time.Time
 }
 
@@ -177,11 +177,11 @@ func (a *api) analytics(w http.ResponseWriter, r *http.Request) {
 	_ = a.db.QueryRow(r.Context(), `SELECT coalesce((SELECT extract(hour from created_at)::int FROM visits WHERE company_id=$1 AND created_at>=current_date-make_interval(days=>$2-1) AND ($3::text='' OR branch_id=nullif($3::text,'')::uuid) GROUP BY 1 ORDER BY count(*) DESC LIMIT 1),0)`, tenant, days, branchArg).Scan(&peakHour)
 	write(w, 200, envelope{Success: true, Data: map[string]any{
 		"period": period, "days": days, "series": series,
-		"totals":       map[string]int{"customers": totalCustomers, "visits": periodVisits, "pointsIssued": pointsIssued, "pointsRedeemed": pointsRedeemed, "outstanding": outstanding},
-		"previous":     map[string]int{"visits": previousVisits, "active": previousActive, "new": previousNew, "pointsIssued": previousIssued},
+		"totals":              map[string]int{"customers": totalCustomers, "visits": periodVisits, "pointsIssued": pointsIssued, "pointsRedeemed": pointsRedeemed, "outstanding": outstanding},
+		"previous":            map[string]int{"visits": previousVisits, "active": previousActive, "new": previousNew, "pointsIssued": previousIssued},
 		"comparisonAvailable": previousVisits > 0 || previousActive > 0 || previousNew > 0 || previousIssued > 0,
-		"audience":     map[string]any{"active": active, "returning": returning, "repeatActive": repeatActive, "frequent": frequent, "loyal": loyal, "atRisk": atRisk, "new": newCustomers, "retentionRate": retention, "averageVisits": averageVisits},
-		"topCustomers": top, "peakHour": peakHour,
+		"audience":            map[string]any{"active": active, "returning": returning, "repeatActive": repeatActive, "frequent": frequent, "loyal": loyal, "atRisk": atRisk, "new": newCustomers, "retentionRate": retention, "averageVisits": averageVisits},
+		"topCustomers":        top, "peakHour": peakHour,
 	}})
 }
 
