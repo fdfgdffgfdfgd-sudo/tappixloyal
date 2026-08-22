@@ -205,6 +205,7 @@ export function CustomerDetailPage({ id }: { id: string }) {
       subtitle={value.phone}
     >
       <Notice text={msg} />
+      <section className="customer-command-center"><div className="customer-identity-block"><span className="customer-avatar-large">{value.firstName.slice(0,1)}</span><div><small>КЛИЕНТ В ПРОГРАММЕ</small><h2>{value.firstName} {value.lastName}</h2><p>{value.phone} · {customerSegment}</p></div></div><div className="customer-command-actions"><button className="primary-action" onClick={() => setBonus("credit")}>Начислить бонусы</button><button onClick={() => setBonus("debit")}>Списать</button><button onClick={archive}>Архивировать</button></div></section>
       <div className="customer-summary">
         <article>
           <span>Баланс</span>

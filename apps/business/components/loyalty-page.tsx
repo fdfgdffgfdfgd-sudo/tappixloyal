@@ -99,13 +99,13 @@ export function LoyaltyPage() {
       className="loyalty-page-v11"
     >
       <Notice text={msg} />
-      <div className="loyalty-workspace-panel"><ProgramMechanics />
+      <div className="loyalty-config-layout"><div className="loyalty-workspace-panel"><ProgramMechanics />
         <section className="loyalty-launch-path"><header><div><small>ПОСЛЕ ПУБЛИКАЦИИ</small><h2>Три шага до первых результатов</h2></div></header><div className="loyalty-next-actions">
           <Link href="/devices"><b>1</b><QrCode/><span><strong>Разместите QR или NFC</strong><small>Клиент откроет и сохранит карту</small></span></Link>
           <Link href="/scanner"><b>2</b><Nfc/><span><strong>Отмечайте покупки</strong><small>Сотрудник сканирует карту гостя</small></span></Link>
           <Link href="/analytics"><b>3</b><TrendingUp/><span><strong>Следите за возвратом</strong><small>Увидите повторные визиты и выручку</small></span></Link>
         </div></section>
-      </div>
+      </div><aside className="loyalty-live-preview"><small>КАК ЭТО УВИДИТ КЛИЕНТ</small><div className="loyalty-preview-card"><span className="preview-mark">T</span><strong>Ваша карта лояльности</strong><p>Посещения и награды в одном месте</p><div><b>1 из 6</b><span>до подарка</span></div><em>Показать карту на кассе</em></div><p className="preview-note">Изменения появятся на карте после публикации.</p></aside></div>
       <details className="loyalty-secondary-section"><summary><Gift/><span><strong>Дополнительные награды</strong><small>Скидки, услуги и подарки поверх основной программы</small></span><Plus/></summary><div><RewardBuilder /></div></details>
       <details className="loyalty-secondary-section"><summary><Bell/><span><strong>Дополнительные правила</strong><small>Приветственный бонус, день рождения и возврат клиентов</small></span><Plus/></summary><div><div className="workspace-explainer"><Bell/><div><small>АВТОМАТИЧЕСКИЕ ДЕЙСТВИЯ</small><h2>Система действует в нужный момент</h2><p>Нулевое значение отключает соответствующее начисление.</p></div></div>
       <form className="settings-card" onSubmit={save}>

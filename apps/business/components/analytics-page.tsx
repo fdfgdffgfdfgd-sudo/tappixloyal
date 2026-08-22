@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { BarChart3, AlertTriangle, Banknote, Building2, CreditCard, Crown, Clock3, Gift, Repeat2, Send, Star, UserX, UserCheck, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, BarChart3, AlertTriangle, Banknote, Building2, CreditCard, Crown, Clock3, Gift, Repeat2, Send, Star, UserX, UserCheck, TrendingUp, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import Link from "next/link";
@@ -81,6 +81,7 @@ export function AnalyticsPage() {
       className="analytics-page-v11"
     >
       <Notice text={msg} />
+      <section className="analytics-question"><div><small>ГЛАВНЫЙ ВОПРОС</small><h2>Возвращаются ли клиенты?</h2><p>Начните с повторных визитов — это самый понятный сигнал, что программа работает.</p></div><Link href="/customers">Посмотреть клиентов <ArrowRight/></Link></section>
       <section className={`analytics-plan analytics-plan-${tier}`}><div><span>{tier==="pro"?<Crown/>:tier==="growth"?<TrendingUp/>:<BarChart3/>}</span><div><small>АНАЛИТИКА {tierName.toLocaleUpperCase("ru-RU")}</small><h2>{tier==="pro"?"Финансовый центр сети":tier==="growth"?"Центр удержания клиентов":"Пульс программы лояльности"}</h2><p>{tier==="pro"?"Выручка, LTV, повторные покупки и обязательства по бонусам.":tier==="growth"?"Сегменты, риск ухода и конкретные аудитории для возврата.":"Только главные показатели без сложных отчётов."}</p></div></div><Link href="/subscription">{tier==="pro"?"Ваш максимальный тариф":"Сравнить тарифы"}</Link></section>
       <div className="toolbar">
         <span>Данные в реальном времени</span>

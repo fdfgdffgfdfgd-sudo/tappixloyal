@@ -251,6 +251,11 @@ export function CustomersPage() {
           </div>
         )}
       </div>
+      {!loading && !!items.length && <section className="customer-mobile-list" aria-label="Клиенты на мобильном устройстве">
+        {items.map((c) => <Link className="customer-mobile-row" href={`/customers/${c.id}`} key={`mobile-${c.id}`}>
+          <span className="customer-mobile-avatar">{c.firstName.slice(0, 1)}</span><span className="customer-mobile-main"><strong>{c.firstName} {c.lastName}</strong><small>{c.phone} · {customerLevelLabel(c.level)}</small><span><b>{c.totalVisits} посещений</b><em>{c.totalPoints} бонусов</em></span></span><span aria-hidden="true">›</span>
+        </Link>)}
+      </section>}
       {!error && <nav className="crm-pagination" aria-label="Пагинация клиентов">
         <span>Найдено: {total}</span>
         <div>
