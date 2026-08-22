@@ -5,7 +5,6 @@ import { Clock3, Gift, ShieldCheck, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import { customerLevelLabel } from "@/lib/labels";
 import { SectionShell } from "./section-shell";
-import { OwnerContext } from "./owner-ux-primitives";
 import { Customer, Branch, Notice } from "./management-shared";
 import { useConfirm } from "./use-confirm";
 
@@ -206,7 +205,23 @@ export function CustomerDetailPage({ id }: { id: string }) {
       subtitle={value.phone}
     >
       <Notice text={msg} />
-      <OwnerContext label="КЛИЕНТ В ПРОГРАММЕ" title={`${value.firstName} ${value.lastName}`} detail={`${value.phone} · ${customerSegment}`} />
+      <section className="customer-command-center">
+        <header className="customer-command-identity">
+          <span className="customer-avatar-large">{value.firstName.slice(0,1)}</span>
+          <div><small>КЛИЕНТ В ПРОГРАММЕ</small><h2>{value.firstName} {value.lastName}</h2><p>{value.phone} · {customerSegment}</p></div>
+        </header>
+        <div className="customer-loyalty-snapshot">
+          <span><small>ТЕКУЩИЙ БАЛАНС</small><strong>{value.totalPoints} б.</strong></span>
+          <span><small>ПОСЕЩЕНИЯ</small><strong>{value.totalVisits}</strong></span>
+          <span><small>ПОСЛЕДНИЙ ВИЗИТ</small><strong>{daysSinceVisit===null?"Нет":`${daysSinceVisit} дн. назад`}</strong></span>
+        </div>
+        <div className="customer-command-actions">
+          <button className="primary-action" onClick={() => setBonus("credit")}>Начислить бонусы</button>
+          <button onClick={() => setBonus("debit")}>Списать</button>
+          <button onClick={archive}>Архивировать</button>
+        </div>
+      </section>
+      <section className="customer-activity-guide"><div><small>СЛЕДУЮЩЕЕ ДЕЙСТВИЕ</small><strong>{value.totalVisits===0?"Познакомьте клиента с программой":"Продолжайте отмечать визиты"}</strong><p>{value.totalVisits===0?"После первого визита появится прогресс и следующая награда.":"История визитов и наград обновляется после каждой операции сотрудника."}</p></div><span>{value.totalVisits===0?"Старт":"В работе"}</span></section>
       <div className="customer-summary">
         <article>
           <span>Баланс</span>

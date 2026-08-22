@@ -5,7 +5,6 @@ import { api } from "@/lib/api";
 import { SectionShell } from "./section-shell";
 import Link from "next/link";
 import { Notice } from "./management-shared";
-import { OwnerContext } from "./owner-ux-primitives";
 
 type AnalyticsData = {
   days: number;
@@ -82,7 +81,22 @@ export function AnalyticsPage() {
       className="analytics-page-v11"
     >
       <Notice text={msg} />
-      <OwnerContext label="ГЛАВНЫЙ ВОПРОС" title="Возвращаются ли клиенты?" detail="Начните с повторных визитов — это самый понятный сигнал, что программа работает." href="/customers" action="Посмотреть клиентов" />
+      <header className="analytics-workspace-header">
+        <div className="analytics-workspace-heading">
+          <small>ЦЕНТР РЕШЕНИЙ</small>
+          <h2>Что происходит с клиентами?</h2>
+          <p>Сначала выберите период и филиал, затем откройте один главный вывод.</p>
+        </div>
+        <Link className="analytics-primary-link" href="/customers">
+          Открыть список клиентов <ArrowRight/>
+        </Link>
+      </header>
+      <section className="analytics-reading-guide">
+        <span className="guide-index">01</span>
+        <div><strong>Сначала смотрим возврат</strong><p>Повторный визит важнее общего числа регистраций: он показывает, что программа приносит пользу.</p></div>
+        <span className="guide-index">02</span>
+        <div><strong>Затем выбираем действие</strong><p>Фильтр филиала и периода меняет все данные ниже, чтобы решение было конкретным.</p></div>
+      </section>
       <section className={`analytics-plan analytics-plan-${tier}`}><div><span>{tier==="pro"?<Crown/>:tier==="growth"?<TrendingUp/>:<BarChart3/>}</span><div><small>АНАЛИТИКА {tierName.toLocaleUpperCase("ru-RU")}</small><h2>{tier==="pro"?"Финансовый центр сети":tier==="growth"?"Центр удержания клиентов":"Пульс программы лояльности"}</h2><p>{tier==="pro"?"Выручка, LTV, повторные покупки и обязательства по бонусам.":tier==="growth"?"Сегменты, риск ухода и конкретные аудитории для возврата.":"Только главные показатели без сложных отчётов."}</p></div></div><Link href="/subscription">{tier==="pro"?"Ваш максимальный тариф":"Сравнить тарифы"}</Link></section>
       <div className="toolbar">
         <span>Данные в реальном времени</span>
