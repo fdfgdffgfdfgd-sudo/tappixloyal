@@ -155,6 +155,14 @@ export function AnalyticsPage() {
               <small>визита в среднем</small>
             </b>
           </section>
+          <section className="analytics-recommendations" aria-labelledby="recommendations-title">
+            <header><div><span>СЛЕДУЮЩИЙ ШАГ</span><h2 id="recommendations-title">Что сделать сегодня</h2></div><TrendingUp /></header>
+            <div>
+              {data.audience.atRisk > 0 && <Link href="/campaigns"><UserX /><span><strong>Вернуть клиентов</strong><small>{data.audience.atRisk} гостей давно не возвращались. Запустите персональное предложение.</small></span><b>Открыть кампании</b></Link>}
+              {data.audience.new > data.audience.repeatActive && <Link href="/automations"><Repeat2 /><span><strong>Помочь новым гостям вернуться</strong><small>Новых клиентов больше, чем повторных визитов. Напоминание после первого посещения поможет удержанию.</small></span><b>Настроить напоминание</b></Link>}
+              {!data.audience.atRisk && data.audience.new <= data.audience.repeatActive && <Link href="/scanner"><Users /><span><strong>Провести следующий визит</strong><small>Откройте Staff Mode, когда придёт клиент — данные обновятся автоматически.</small></span><b>Открыть Staff Mode</b></Link>}
+            </div>
+          </section>
           {tier!=="starter"&&<section className="loyalty-economy">
             <header>
               <div><span>ЭКОНОМИКА ПРОГРАММЫ</span><h2>Движение бонусов</h2></div>
